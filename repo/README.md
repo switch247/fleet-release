@@ -4,7 +4,6 @@
 Offline-first FleetLease suite with React frontend and Go (Echo) backend for bookings, inspections, pricing, settlement, disputes, and admin operations.
 
 ## Architecture
-/repo
 - `backend/`: API, auth, pricing, inspection hash chain, ledger, sync, admin endpoints.
 - `frontend/`: React UI with login, listing browse, booking action, offline queue + manual sync.
 - `tests/unit_tests`: pricing and core logic tests.

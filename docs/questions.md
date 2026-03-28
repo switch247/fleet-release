@@ -1,8 +1,3 @@
-Business Logic Questions Log
-
-Instructions: For each item below: Question + My understanding/hypothesis + Suggested solution or data to capture.
-
----
 
 **Requirements — Scope & Roles**
 1) Question: What is the minimal end-to-end booking flow that must be demoable for MVP?
@@ -157,10 +152,4 @@ AC-4: Auditability: All inspection revisions and ledger entries are versioned an
 AC-5: Attachments & limits: Client enforces photo <= 10 MB and video <= 100 MB; server validates checksums and stores attachments with fingerprint deduplication.
 AC-6: Backups & retention: Nightly local backup runs successfully and retains 30 days; financial ledgers retained a minimum of 7 years and are not purged by automated retention.
 AC-7: Admin controls: Admins can publish categories/products, manage retention rules, configure IP allowlist, and download templates; RBAC enforces least privilege.
-
----
-
-If any of the above assumptions are incorrect or incomplete, please annotate each item with corrections or provide the missing spec values.
-
-Next steps: review these questions, confirm acceptance criteria, and I will convert confirmed items into API and data model requirements.
 

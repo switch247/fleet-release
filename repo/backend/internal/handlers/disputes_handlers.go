@@ -142,34 +142,62 @@ func (h *Handler) CreateConsultation(c echo.Context) error {
 
 func (h *Handler) ListConsultations(c echo.Context) error {
 	bookingID := strings.TrimSpace(c.QueryParam("bookingId"))
-	if bookingID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "bookingId is required"})
-	}
 	roles, _ := c.Get("roles").([]models.Role)
 	actor, _ := c.Get("userID").(string)
-	booking, ok := h.Store.GetBooking(bookingID)
-	if !ok {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "booking not found"})
-	}
-	if !canAccessBooking(actor, roles, booking) {
-		return c.JSON(http.StatusForbidden, map[string]string{"error": "forbidden"})
-	}
-	all := h.Store.ListConsultationsByBooking(bookingID)
-	out := make([]models.Consultation, 0, len(all))
-	for _, item := range all {
-		switch item.Visibility {
-		case "all":
-			out = append(out, item)
-		case "parties":
-			if hasRole(roles, models.RoleAdmin) || hasRole(roles, models.RoleCSA) || actor == booking.CustomerID || actor == booking.ProviderID {
+
+	var out []models.Consultation
+
+	// If bookingId provided, restrict to that booking (existing behaviour)
+	if bookingID != "" {
+		booking, ok := h.Store.GetBooking(bookingID)
+		if !ok {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "booking not found"})
+		}
+		if !canAccessBooking(actor, roles, booking) {
+			return c.JSON(http.StatusForbidden, map[string]string{"error": "forbidden"})
+		}
+		all := h.Store.ListConsultationsByBooking(bookingID)
+		for _, item := range all {
+			switch item.Visibility {
+			case "all":
 				out = append(out, item)
+			case "parties":
+				if hasRole(roles, models.RoleAdmin) || hasRole(roles, models.RoleCSA) || actor == booking.CustomerID || actor == booking.ProviderID {
+					out = append(out, item)
+				}
+			default:
+				if hasRole(roles, models.RoleAdmin) || hasRole(roles, models.RoleCSA) {
+					out = append(out, item)
+				}
 			}
-		default:
-			if hasRole(roles, models.RoleAdmin) || hasRole(roles, models.RoleCSA) {
+		}
+		return c.JSON(http.StatusOK, out)
+	}
+
+	// No bookingId: return consultations the actor may access across bookings.
+	// Admin/CSA: return all consultations; others: return consultations for bookings they are a party of (customer or provider).
+	allBookings := h.Store.ListBookings()
+	for _, booking := range allBookings {
+		if !(hasRole(roles, models.RoleAdmin) || hasRole(roles, models.RoleCSA) || actor == booking.CustomerID || actor == booking.ProviderID) {
+			continue
+		}
+		consults := h.Store.ListConsultationsByBooking(booking.ID)
+		for _, item := range consults {
+			switch item.Visibility {
+			case "all":
 				out = append(out, item)
+			case "parties":
+				if hasRole(roles, models.RoleAdmin) || hasRole(roles, models.RoleCSA) || actor == booking.CustomerID || actor == booking.ProviderID {
+					out = append(out, item)
+				}
+			default:
+				if hasRole(roles, models.RoleAdmin) || hasRole(roles, models.RoleCSA) {
+					out = append(out, item)
+				}
 			}
 		}
 	}
+
 	return c.JSON(http.StatusOK, out)
 }
 

@@ -6,6 +6,7 @@ import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import DataTable from '../components/ui/DataTable';
 import Badge from '../components/ui/Badge';
+import Modal from '../components/ui/Modal';
 import { useAuth } from '../auth/AuthProvider';
 
 export default function ComplaintsPage() {
@@ -14,7 +15,9 @@ export default function ComplaintsPage() {
   const bookingsQuery = useQuery({ queryKey: ['complaint-bookings'], queryFn: bookings });
   const complaintsQuery = useQuery({ queryKey: ['complaints'], queryFn: () => complaints('') });
   const [form, setForm] = useState({ bookingId: '', outcome: '' });
-  const [decision, setDecision] = useState({ status: 'resolved', outcome: '' });
+  const [modalOpen, setModalOpen] = useState(false);
+  const [selectedComplaint, setSelectedComplaint] = useState(null);
+  const [modalDecision, setModalDecision] = useState({ status: 'resolved', outcome: '' });
 
   const createMutation = useMutation({
     mutationFn: createComplaint,
@@ -44,31 +47,11 @@ export default function ComplaintsPage() {
       title: 'Actions',
       render: (row) => canArbitrate ? (
         <div className="flex items-center gap-2">
-          <select
-            className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs"
-            value={decision.status}
-            onChange={(e) => setDecision((prev) => ({ ...prev, status: e.target.value }))}
-          >
-            <option value="resolved">Resolved</option>
-            <option value="dismissed">Dismissed</option>
-            <option value="under_review">Under Review</option>
-          </select>
-          <Input
-            className="h-8"
-            placeholder="Outcome"
-            value={decision.outcome}
-            onChange={(e) => setDecision((prev) => ({ ...prev, outcome: e.target.value }))}
-          />
-          <Button
-            className="h-8"
-            onClick={() => arbitrateMutation.mutate({ id: row.id, payload: { status: decision.status, outcome: decision.outcome } })}
-          >
-            Apply
-          </Button>
+          <Button size="sm" onClick={() => { setSelectedComplaint(row); setModalDecision({ status: 'resolved', outcome: '' }); setModalOpen(true); }}>Arbitrate</Button>
         </div>
       ) : 'N/A',
     },
-  ], [arbitrateMutation, canArbitrate, decision.outcome, decision.status]);
+  ], [arbitrateMutation, canArbitrate]);
 
   return (
     <div className="space-y-6">
@@ -90,6 +73,35 @@ export default function ComplaintsPage() {
           <DataTable columns={columns} rows={rows} empty="No complaints" />
         </div>
       </Card>
+
+      {/* Arbitrate modal */}
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={selectedComplaint ? `Arbitrate ${selectedComplaint.id}` : 'Arbitrate'} footer={(
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => setModalOpen(false)}>Cancel</Button>
+          <Button onClick={() => {
+            if (!selectedComplaint) return;
+            arbitrateMutation.mutate({ id: selectedComplaint.id, payload: modalDecision }, {
+              onSuccess: () => {
+                setModalOpen(false);
+                setSelectedComplaint(null);
+              }
+            });
+          }}>Apply</Button>
+        </div>
+      )}>
+        <div className="space-y-3">
+          <select
+            className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-sm"
+            value={modalDecision.status}
+            onChange={(e) => setModalDecision((p) => ({ ...p, status: e.target.value }))}
+          >
+            <option value="resolved">Resolved</option>
+            <option value="dismissed">Dismissed</option>
+            <option value="under_review">Under Review</option>
+          </select>
+          <Input placeholder="Outcome" value={modalDecision.outcome} onChange={(e) => setModalDecision((p) => ({ ...p, outcome: e.target.value }))} />
+        </div>
+      </Modal>
     </div>
   );
 }

@@ -1,13 +1,16 @@
 package handlers
 
 import (
+	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -239,4 +242,115 @@ func (h *Handler) VerifyInspection(c echo.Context) error {
 		prev = rev.Hash
 	}
 	return c.JSON(http.StatusOK, map[string]interface{}{"bookingId": bookingID, "revisions": resp})
+}
+
+func (h *Handler) ListInspections(c echo.Context) error {
+	bookingID := c.QueryParam("bookingId")
+	if bookingID == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "bookingId is required"})
+	}
+	booking, ok := h.Store.GetBooking(bookingID)
+	actor, _ := c.Get("userID").(string)
+	roles, _ := c.Get("roles").([]models.Role)
+
+	// If booking doesn't exist, return 404 (booking not found)
+	if !ok {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "booking not found"})
+	}
+
+	if !canAccessBooking(actor, roles, booking) {
+		return c.JSON(http.StatusForbidden, map[string]string{"error": "forbidden"})
+	}
+
+	revisions := h.Store.ListInspections(bookingID)
+	if revisions == nil {
+		revisions = make([]models.InspectionRevision, 0)
+	}
+	return c.JSON(http.StatusOK, revisions)
+}
+
+// AttachmentPresign returns a temporary signed URL for previewing an attachment.
+func (h *Handler) AttachmentPresign(c echo.Context) error {
+	id := c.Param("id")
+	// require authenticated user and access to booking
+	attachment, ok := h.Store.GetAttachment(id)
+	if !ok {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "attachment not found"})
+	}
+	actor, _ := c.Get("userID").(string)
+	roles, _ := c.Get("roles").([]models.Role)
+	if attachment.BookingID != "" {
+		booking, ok := h.Store.GetBooking(attachment.BookingID)
+		if !ok {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "booking not found"})
+		}
+		if !canAccessBooking(actor, roles, booking) {
+			return c.JSON(http.StatusForbidden, map[string]string{"error": "forbidden"})
+		}
+	}
+	// optional ttl in body
+	var req struct {
+		TTLSeconds int `json:"ttlSeconds"`
+	}
+	_ = c.Bind(&req)
+	ttl := 60
+	if req.TTLSeconds > 0 && req.TTLSeconds <= 3600 {
+		ttl = req.TTLSeconds
+	}
+	exp := time.Now().Add(time.Duration(ttl) * time.Second).Unix()
+	msg := fmt.Sprintf("%s:%d", id, exp)
+	mac := hmac.New(sha256.New, []byte(h.Cfg.AttachmentSigningSecret))
+	mac.Write([]byte(msg))
+	sig := hex.EncodeToString(mac.Sum(nil))
+	// Build fully-qualified URL using request scheme+host so frontend can open it directly.
+	scheme := "http"
+	if c.Request().TLS != nil {
+		scheme = "https"
+	} else if p := c.Request().Header.Get("X-Forwarded-Proto"); p != "" {
+		scheme = p
+	}
+	host := c.Request().Host
+	url := fmt.Sprintf("%s://%s/api/v1/attachments/%s?exp=%d&sig=%s", scheme, host, id, exp, sig)
+	return c.JSON(http.StatusOK, map[string]string{"url": url})
+}
+
+// AttachmentServe serves an attachment file when presented with a valid signature and expiry.
+func (h *Handler) AttachmentServe(c echo.Context) error {
+	id := c.Param("id")
+	expStr := c.QueryParam("exp")
+	sig := c.QueryParam("sig")
+	if expStr == "" || sig == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "missing signature or expiry"})
+	}
+	expInt, err := strconv.ParseInt(expStr, 10, 64)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid expiry"})
+	}
+	if time.Now().Unix() > expInt {
+		return c.JSON(http.StatusGone, map[string]string{"error": "url expired"})
+	}
+	msg := fmt.Sprintf("%s:%d", id, expInt)
+	mac := hmac.New(sha256.New, []byte(h.Cfg.AttachmentSigningSecret))
+	mac.Write([]byte(msg))
+	expected := hex.EncodeToString(mac.Sum(nil))
+	if !hmac.Equal([]byte(expected), []byte(sig)) {
+		return c.JSON(http.StatusForbidden, map[string]string{"error": "invalid signature"})
+	}
+	att, ok := h.Store.GetAttachment(id)
+	if !ok {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "attachment not found"})
+	}
+	// read file and detect content-type
+	bytes, err := os.ReadFile(att.Path)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to read file"})
+	}
+	contentType := "application/octet-stream"
+	if len(bytes) > 0 {
+		contentType = http.DetectContentType(bytes[:512])
+	}
+	// set inline disposition so browser renders images/videos directly
+	c.Response().Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", id))
+	c.Response().Header().Set("Cache-Control", "private, max-age=60")
+	return c.Blob(http.StatusOK, contentType, bytes)
 }

@@ -10,6 +10,7 @@ import (
 type Config struct {
 	Port                      string
 	JWTSecret                 string
+	AttachmentSigningSecret   string
 	IdleTimeout               time.Duration
 	AbsoluteTimeout           time.Duration
 	AdminAllowlistCIDR        []string
@@ -30,9 +31,11 @@ type Config struct {
 }
 
 func Load() Config {
+	jwt := getEnv("JWT_SECRET", "dev-secret-change-me")
 	return Config{
 		Port:                      getEnv("PORT", "8080"),
-		JWTSecret:                 getEnv("JWT_SECRET", "dev-secret-change-me"),
+		JWTSecret:                 jwt,
+		AttachmentSigningSecret:   getEnv("ATTACHMENT_SIGNING_SECRET", jwt),
 		IdleTimeout:               time.Duration(getEnvInt("JWT_IDLE_MINUTES", 30)) * time.Minute,
 		AbsoluteTimeout:           time.Duration(getEnvInt("JWT_ABSOLUTE_HOURS", 12)) * time.Hour,
 		AdminAllowlistCIDR:        splitCSV(getEnv("ADMIN_ALLOWLIST", "127.0.0.1/32,::1/128")),

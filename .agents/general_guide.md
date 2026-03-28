@@ -168,7 +168,7 @@ Loading/Disabled states for buttons.
 
 Unified spacing, alignment, and color scheme.
 
-4. Execution Commands (Docker Only)
+4. Execution Commands (Docker Only readme must state  as explicitly)
 
 Start Project: docker-compose up --build
 

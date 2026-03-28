@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { login as apiLogin, logout as apiLogout, me } from '../lib/api';
+import { login as apiLogin, logout as apiLogout, revokeToken, me } from '../lib/api';
 
 const IDLE_LIMIT_MS = 25 * 60 * 1000;
 const WARNING_MS = 2 * 60 * 1000;
@@ -58,10 +58,15 @@ export function AuthProvider({ children }) {
     const timer = setInterval(async () => {
       const idleMs = Date.now() - lastActivity.current;
       if (idleMs >= IDLE_LIMIT_MS) {
-        await apiLogout();
+        // Optimistic logout: clear client state immediately, then
+        // attempt to revoke the token in background so UI never blocks
+        const token = localStorage.getItem('token');
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
         setUser(null);
         setWarningOpen(false);
         setSecondsLeft(0);
+        revokeToken(token);
         return;
       }
       const msLeft = IDLE_LIMIT_MS - idleMs;
@@ -73,7 +78,7 @@ export function AuthProvider({ children }) {
     return () => clearInterval(timer);
   }, [user]);
 
-  const value = useMemo(() => ({
+    const value = useMemo(() => ({
     user,
     loading,
     warningOpen,
@@ -85,9 +90,14 @@ export function AuthProvider({ children }) {
       return data;
     },
     async logout() {
-      await apiLogout();
+      // Optimistic logout: immediately clear client state so user is signed out
+      const token = localStorage.getItem('token');
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
       setUser(null);
       setWarningOpen(false);
+      // Revoke token in background; do not block the UI
+      revokeToken(token);
     },
     async refreshMe() {
       const profile = await me();
