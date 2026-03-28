@@ -1,0 +1,685 @@
+openapi: 3.0.3
+info:
+  title: FleetLease API
+  version: v1
+servers:
+  - url: /api/v1
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+        totpCode:
+          type: string
+    BookingRequest:
+      type: object
+      required: [listingId, startAt, endAt, odoStart, odoEnd]
+      properties:
+        listingId:
+          type: string
+        couponCode:
+          type: string
+        startAt:
+          type: string
+          format: date-time
+        endAt:
+          type: string
+          format: date-time
+        odoStart:
+          type: number
+        odoEnd:
+          type: number
+    InspectionRequest:
+      type: object
+      required: [bookingId, stage, items]
+      properties:
+        bookingId:
+          type: string
+        stage:
+          type: string
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              condition:
+                type: string
+              evidenceIds:
+                type: array
+                items:
+                  type: string
+        notes:
+          type: string
+    AttachmentInitRequest:
+      type: object
+      required: [bookingId, type, sizeBytes, checksum, fingerprint]
+      properties:
+        bookingId:
+          type: string
+        type:
+          type: string
+          enum: [photo, video]
+        sizeBytes:
+          type: integer
+        checksum:
+          type: string
+        fingerprint:
+          type: string
+    CouponRequest:
+      type: object
+      required: [code, bookingId]
+      properties:
+        code:
+          type: string
+        bookingId:
+          type: string
+    AdminCreateUser:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        email:
+          type: string
+        password:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+            enum: [customer, provider, csa, admin]
+        governmentId:
+          type: string
+    AdminUpdateUser:
+      type: object
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+            enum: [customer, provider, csa, admin]
+        governmentId:
+          type: string
+paths:
+  /auth/login:
+    post:
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Returns JWT and user info
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Refresh token
+  /auth/logout:
+    post:
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Logout
+  /auth/me:
+    get:
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current profile
+    patch:
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Profile updated
+  /auth/login-history:
+    get:
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Authentication audit events
+  /auth/totp/enroll:
+    post:
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: TOTP secret and URI
+  /auth/totp/verify:
+    post:
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: TOTP enabled
+  /auth/admin-reset:
+    post:
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, newPassword, checkedBy, method, evidenceRef]
+              properties:
+                username: { type: string }
+                newPassword: { type: string }
+                checkedBy: { type: string }
+                method: { type: string }
+                evidenceRef: { type: string }
+                reason: { type: string }
+      responses:
+        '200':
+          description: Password reset
+  /categories:
+    get:
+      tags: [Inventory]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Category list
+  /stats/summary:
+    get:
+      tags: [Inventory]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Dashboard summary metrics
+  /listings:
+    get:
+      tags: [Inventory]
+      security:
+        - bearerAuth: []
+      responses: { '200': { description: OK } }
+  /bookings:
+    get:
+      tags: [Bookings]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Accessible bookings
+    post:
+      tags: [Bookings]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookingRequest'
+      responses:
+        '201':
+          description: Booking created
+  /coupons/redeem:
+    post:
+      tags: [Bookings]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CouponRequest'
+      responses:
+        '200':
+          description: Coupon provisional acceptance
+  /inspections:
+    post:
+      tags: [Inspections]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InspectionRequest'
+      responses:
+        '201':
+          description: Inspection recorded
+  /inspections/verify/{bookingID}:
+    get:
+      tags: [Inspections]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: bookingID
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Checklist evidence and hash verification
+  /attachments/chunk/init:
+    post:
+      tags: [Attachments]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AttachmentInitRequest'
+      responses:
+        '201': { description: Upload initialized }
+  /attachments/chunk/upload:
+    post:
+      tags: [Attachments]
+      security:
+        - bearerAuth: []
+      responses:
+        '200': { description: Chunk accepted }
+  /attachments/chunk/complete:
+    post:
+      tags: [Attachments]
+      security:
+        - bearerAuth: []
+      responses:
+        '200': { description: Upload complete }
+  /settlements/close/{bookingID}:
+    post:
+      tags: [Settlements]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: bookingID
+          required: true
+          schema:
+            type: string
+      responses:
+        '200': { description: Trip settled }
+  /ledger/{bookingID}:
+    get:
+      tags: [Settlements]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: bookingID
+          required: true
+          schema:
+            type: string
+      responses:
+        '200': { description: Ledger entries }
+  /ledger/{bookingID}/verify:
+    get:
+      tags: [Settlements]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: bookingID
+          required: true
+          schema:
+            type: string
+      responses:
+        '200': { description: Ledger hash-chain verification }
+  /complaints:
+    get:
+      tags: [Disputes]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: bookingId
+          required: false
+          schema:
+            type: string
+      responses:
+        '200': { description: Complaint list }
+    post:
+      tags: [Disputes]
+      security:
+        - bearerAuth: []
+      responses:
+        '201': { description: Complaint recorded }
+  /complaints/{id}/arbitrate:
+    patch:
+      tags: [Disputes]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200': { description: Complaint arbitration recorded }
+  /consultations:
+    post:
+      tags: [Disputes]
+      security:
+        - bearerAuth: []
+      responses:
+        '201': { description: Consultation note saved }
+    get:
+      tags: [Disputes]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: bookingId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200': { description: Consultation notes with role-based visibility }
+  /consultations/attachments:
+    post:
+      tags: [Disputes]
+      security:
+        - bearerAuth: []
+      responses:
+        '201': { description: Consultation attachment linked }
+  /consultations/{id}/attachments:
+    get:
+      tags: [Disputes]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200': { description: Consultation evidence list }
+  /ratings:
+    post:
+      tags: [Disputes]
+      security:
+        - bearerAuth: []
+      responses:
+        '201': { description: Rating created }
+    get:
+      tags: [Disputes]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: bookingId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200': { description: Ratings list }
+  /notifications:
+    get:
+      tags: [Notifications]
+      security:
+        - bearerAuth: []
+      responses:
+        '200': { description: Inbox items }
+  /sync/reconcile:
+    post:
+      tags: [Offline]
+      security:
+        - bearerAuth: []
+      responses:
+        '200': { description: Sync acknowledged }
+  /exports/dispute-pdf/{id}:
+    get:
+      tags: [Disputes]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: URI to dispute PDF
+  /admin/retention:
+    get:
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      responses:
+        '200': { description: Retention info }
+  /admin/backup/now:
+    post:
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      responses:
+        '200': { description: Backup run completed or failed with status }
+  /admin/restore/now:
+    post:
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      responses:
+        '200': { description: Restore run completed or failed with status }
+  /admin/backup/jobs:
+    get:
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      responses:
+        '200': { description: Recent backup/restore jobs }
+  /admin/categories:
+    get:
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      responses:
+        '200': { description: Category list }
+    post:
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      responses:
+        '201': { description: Category created }
+  /admin/categories/{categoryID}:
+    patch:
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: categoryID
+          required: true
+          schema:
+            type: string
+      responses:
+        '200': { description: Category updated }
+    delete:
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: categoryID
+          required: true
+          schema:
+            type: string
+      responses:
+        '204': { description: Category deleted }
+  /admin/listings:
+    get:
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      responses:
+        '200': { description: Listing list }
+    post:
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      responses:
+        '201': { description: Listing created }
+  /admin/listings/{listingID}:
+    patch:
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: listingID
+          required: true
+          schema:
+            type: string
+      responses:
+        '200': { description: Listing updated }
+    delete:
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: listingID
+          required: true
+          schema:
+            type: string
+      responses:
+        '204': { description: Listing deleted }
+  /admin/listings/bulk:
+    post:
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      responses:
+        '200': { description: Bulk listing update applied }
+  /admin/listings/search:
+    get:
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: q
+          required: false
+          schema:
+            type: string
+      responses:
+        '200': { description: Searchable listing fields result set }
+  /admin/notification-templates:
+    get:
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      responses:
+        '200': { description: Template list }
+    post:
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      responses:
+        '201': { description: Template created }
+  /admin/notifications/send:
+    post:
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      responses:
+        '201': { description: Notification queued/delivered in-app }
+  /admin/notifications/retry:
+    post:
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      responses:
+        '200': { description: Retry queue processed }
+  /admin/workers/metrics:
+    get:
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      responses:
+        '200': { description: Background worker metrics }
+  /admin/users:
+    get:
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      responses:
+        '200': { description: User list }
+    post:
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminCreateUser'
+      responses:
+        '201': { description: User created }
+  /admin/users/{userID}:
+    patch:
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: userID
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminUpdateUser'
+      responses:
+        '200': { description: User updated }
+    delete:
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: userID
+          required: true
+          schema:
+            type: string
+      responses:
+        '204': { description: User deleted }
