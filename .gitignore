@@ -69,3 +69,5 @@ vendor/
 (# Misc)
 .DS_Store
 /.tmp/
+
+/meta
