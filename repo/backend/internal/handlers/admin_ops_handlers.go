@@ -8,16 +8,19 @@ import (
 	"time"
 
 	"fleetlease/backend/internal/models"
+	"fleetlease/backend/internal/services"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
 
 func (h *Handler) AdminRetention(c echo.Context) error {
-	return c.JSON(http.StatusOK, map[string]int{
+	reports := h.Store.ListRetentionReports(10)
+	return c.JSON(http.StatusOK, map[string]interface{}{
 		"backupRetentionDays":     h.Cfg.BackupRetentionDays,
 		"attachmentRetentionDays": h.Cfg.AttachmentRetentionDays,
 		"ledgerRetentionYears":    h.Cfg.LedgerRetentionYears,
+		"recentRetentionReports":  reports,
 	})
 }
 
@@ -32,7 +35,7 @@ func (h *Handler) AdminBackupNow(c echo.Context) error {
 	}
 	h.Store.SaveBackupJob(job)
 
-	output, simulated, err := runLocalScript("backup.sh")
+	output, degraded, err := runLocalScript("backup.sh")
 	job.FinishedAt = time.Now().UTC()
 	if err != nil {
 		job.Status = "failed"
@@ -40,12 +43,18 @@ func (h *Handler) AdminBackupNow(c echo.Context) error {
 		h.Store.SaveBackupJob(job)
 		return c.JSON(http.StatusInternalServerError, map[string]interface{}{"job": job, "error": "backup failed"})
 	}
-	job.Status = "completed"
-	if simulated {
-		job.Artifact = "simulated-backup"
-	} else {
-		job.Artifact = "local-backup"
+	if degraded {
+		job.Status = "degraded"
+		job.Error = output
+		job.Artifact = "backup-script-missing"
+		h.Store.SaveBackupJob(job)
+		return c.JSON(http.StatusServiceUnavailable, map[string]interface{}{
+			"job":     job,
+			"warning": "backup script unavailable; operation not executed",
+		})
 	}
+	job.Status = "completed"
+	job.Artifact = "local-backup"
 	h.Store.SaveBackupJob(job)
 	return c.JSON(http.StatusOK, job)
 }
@@ -71,7 +80,7 @@ func (h *Handler) AdminRestoreNow(c echo.Context) error {
 	if req.BackupPath != "" {
 		args = append(args, req.BackupPath)
 	}
-	output, simulated, err := runLocalScript("restore.sh", args...)
+	output, degraded, err := runLocalScript("restore.sh", args...)
 	job.FinishedAt = time.Now().UTC()
 	if err != nil {
 		job.Status = "failed"
@@ -79,10 +88,17 @@ func (h *Handler) AdminRestoreNow(c echo.Context) error {
 		h.Store.SaveBackupJob(job)
 		return c.JSON(http.StatusInternalServerError, map[string]interface{}{"job": job, "error": "restore failed"})
 	}
-	job.Status = "completed"
-	if simulated {
-		job.Artifact = "simulated-restore"
+	if degraded {
+		job.Status = "degraded"
+		job.Error = output
+		job.Artifact = "restore-script-missing"
+		h.Store.SaveBackupJob(job)
+		return c.JSON(http.StatusServiceUnavailable, map[string]interface{}{
+			"job":     job,
+			"warning": "restore script unavailable; operation not executed",
+		})
 	}
+	job.Status = "completed"
 	h.Store.SaveBackupJob(job)
 	return c.JSON(http.StatusOK, job)
 }
@@ -98,13 +114,20 @@ func (h *Handler) AdminWorkerMetrics(c echo.Context) error {
 	return c.JSON(http.StatusOK, h.Metrics.Snapshot())
 }
 
+func (h *Handler) AdminRunRetentionPurge(c echo.Context) error {
+	result := services.RunRetentionPurge(h.Store, h.Cfg, h.Logger)
+	actor, _ := c.Get("userID").(string)
+	h.Logger.Info("admin_retention_triggered", "actor", actor, "reportID", result.ID, "attachmentsDeleted", result.AttachmentsDeleted, "ledgerDeleted", result.LedgerDeleted)
+	return c.JSON(http.StatusOK, result)
+}
+
 func runLocalScript(name string, args ...string) (string, bool, error) {
 	scriptPath, ok := resolveScriptPath(name)
 	if !ok {
-		return "script not available; simulated success", true, nil
+		return "script not available", true, nil
 	}
 	if _, err := exec.LookPath("sh"); err != nil {
-		return "shell runtime not available; simulated success", true, nil
+		return "shell runtime not available", true, nil
 	}
 	cmdArgs := append([]string{scriptPath}, args...)
 	cmd := exec.Command("sh", cmdArgs...)

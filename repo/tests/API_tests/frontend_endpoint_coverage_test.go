@@ -40,6 +40,22 @@ func TestFrontendCriticalEndpointsExist(t *testing.T) {
 			t.Fatalf("expected 200 for %s got %d body=%s", path, rec.Code, rec.Body.String())
 		}
 	}
+
+	estimateBody, _ := json.Marshal(map[string]interface{}{
+		"listingId": "11111111-1111-1111-1111-111111111111",
+		"startAt":   "2026-03-28T09:00:00Z",
+		"endAt":     "2026-03-28T11:00:00Z",
+		"odoStart":  10,
+		"odoEnd":    25,
+	})
+	estimateReq := httptest.NewRequest(http.MethodPost, "/api/v1/bookings/estimate", bytes.NewReader(estimateBody))
+	estimateReq.Header.Set("Content-Type", "application/json")
+	estimateReq.Header.Set("Authorization", "Bearer "+token)
+	estimateRec := httptest.NewRecorder()
+	e.ServeHTTP(estimateRec, estimateReq)
+	if estimateRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for /api/v1/bookings/estimate got %d body=%s", estimateRec.Code, estimateRec.Body.String())
+	}
 }
 
 func TestAdminCategoryAndListingCRUD(t *testing.T) {
@@ -209,5 +225,62 @@ func TestAdminCanUpdateUserRoles(t *testing.T) {
 	}
 	if !seen {
 		t.Fatalf("updated user not found in list")
+	}
+}
+
+func TestCategoryTreeView(t *testing.T) {
+	e := public.BuildSeededRouterForTests()
+	adminToken := loginForEndpoint(t, e, "admin", "Admin1234!Pass")
+	customerToken := loginForEndpoint(t, e, "customer", "Customer1234!")
+
+	parentBody, _ := json.Marshal(map[string]string{"name": "Vehicles"})
+	parentReq := httptest.NewRequest(http.MethodPost, "/api/v1/admin/categories", bytes.NewReader(parentBody))
+	parentReq.Header.Set("Content-Type", "application/json")
+	parentReq.Header.Set("Authorization", "Bearer "+adminToken)
+	parentRec := httptest.NewRecorder()
+	e.ServeHTTP(parentRec, parentReq)
+	if parentRec.Code != http.StatusCreated {
+		t.Fatalf("create parent category failed: %d %s", parentRec.Code, parentRec.Body.String())
+	}
+	var parent struct {
+		ID string `json:"id"`
+	}
+	_ = json.Unmarshal(parentRec.Body.Bytes(), &parent)
+
+	childBody, _ := json.Marshal(map[string]string{"name": "SUV", "parentId": parent.ID})
+	childReq := httptest.NewRequest(http.MethodPost, "/api/v1/admin/categories", bytes.NewReader(childBody))
+	childReq.Header.Set("Content-Type", "application/json")
+	childReq.Header.Set("Authorization", "Bearer "+adminToken)
+	childRec := httptest.NewRecorder()
+	e.ServeHTTP(childRec, childReq)
+	if childRec.Code != http.StatusCreated {
+		t.Fatalf("create child category failed: %d %s", childRec.Code, childRec.Body.String())
+	}
+
+	treeReq := httptest.NewRequest(http.MethodGet, "/api/v1/categories?view=tree", nil)
+	treeReq.Header.Set("Authorization", "Bearer "+customerToken)
+	treeRec := httptest.NewRecorder()
+	e.ServeHTTP(treeRec, treeReq)
+	if treeRec.Code != http.StatusOK {
+		t.Fatalf("tree categories failed: %d %s", treeRec.Code, treeRec.Body.String())
+	}
+	var nodes []struct {
+		ID       string `json:"id"`
+		Children []struct {
+			ID string `json:"id"`
+		} `json:"children"`
+	}
+	_ = json.Unmarshal(treeRec.Body.Bytes(), &nodes)
+	foundParentWithChild := false
+	for _, node := range nodes {
+		if node.ID != parent.ID {
+			continue
+		}
+		if len(node.Children) == 1 {
+			foundParentWithChild = true
+		}
+	}
+	if !foundParentWithChild {
+		t.Fatalf("expected parent category to include child in tree response")
 	}
 }

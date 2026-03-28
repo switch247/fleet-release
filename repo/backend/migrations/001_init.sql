@@ -4,6 +4,8 @@ CREATE TABLE IF NOT EXISTS users (
   email TEXT NOT NULL DEFAULT '',
   password_hash TEXT NOT NULL,
   government_id_enc TEXT,
+  payment_reference_enc TEXT,
+  address_enc TEXT,
   failed_attempts INT NOT NULL DEFAULT 0,
   locked_until TIMESTAMPTZ,
   totp_secret TEXT,
@@ -16,6 +18,8 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT NOT NULL DEFAULT '';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS payment_reference_enc TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS address_enc TEXT;
 
 CREATE TABLE IF NOT EXISTS user_roles (
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -43,8 +47,10 @@ CREATE TABLE IF NOT EXISTS auth_events (
 
 CREATE TABLE IF NOT EXISTS categories (
   id UUID PRIMARY KEY,
-  name TEXT NOT NULL
+  name TEXT NOT NULL,
+  parent_id UUID REFERENCES categories(id)
 );
+ALTER TABLE categories ADD COLUMN IF NOT EXISTS parent_id UUID REFERENCES categories(id);
 
 CREATE TABLE IF NOT EXISTS listings (
   id UUID PRIMARY KEY,
@@ -197,6 +203,14 @@ CREATE TABLE IF NOT EXISTS backup_jobs (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   finished_at TIMESTAMPTZ,
   error_message TEXT
+);
+
+CREATE TABLE IF NOT EXISTS retention_jobs (
+  id UUID PRIMARY KEY,
+  attachments_deleted INT NOT NULL,
+  ledger_deleted INT NOT NULL,
+  file_delete_errors INT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS password_reset_evidence (

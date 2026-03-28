@@ -88,15 +88,28 @@ func (h *Handler) AdminCreateUser(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "only one admin is permitted"})
 	}
 	hash, _ := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
-	gov := ""
-	if req.GovernmentID != "" {
-		enc, err := services.EncryptAES256([]byte(h.Cfg.EncryptionKey), req.GovernmentID)
-		if err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to encrypt government ID"})
-		}
-		gov = services.MaskSensitive(enc)
+	govEnc, err := encryptValue(h.Cfg.EncryptionKey, req.GovernmentID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to encrypt government ID"})
 	}
-	user := models.User{ID: uuid.NewString(), Username: username, Email: strings.TrimSpace(req.Email), PasswordHash: string(hash), Roles: roles, GovernmentIDEnc: gov}
+	paymentEnc, err := encryptValue(h.Cfg.EncryptionKey, req.PaymentReference)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to encrypt payment reference"})
+	}
+	addressEnc, err := encryptValue(h.Cfg.EncryptionKey, req.Address)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to encrypt address"})
+	}
+	user := models.User{
+		ID:                  uuid.NewString(),
+		Username:            username,
+		Email:               strings.TrimSpace(req.Email),
+		PasswordHash:        string(hash),
+		Roles:               roles,
+		GovernmentIDEnc:     govEnc,
+		PaymentReferenceEnc: paymentEnc,
+		AddressEnc:          addressEnc,
+	}
 	h.Store.SaveUser(user)
 	return c.JSON(http.StatusCreated, sanitizeUser(user))
 }
@@ -128,11 +141,25 @@ func (h *Handler) AdminUpdateUser(c echo.Context) error {
 		user.PasswordHash = string(hash)
 	}
 	if req.GovernmentID != "" {
-		enc, err := services.EncryptAES256([]byte(h.Cfg.EncryptionKey), req.GovernmentID)
+		enc, err := encryptValue(h.Cfg.EncryptionKey, req.GovernmentID)
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to encrypt government ID"})
 		}
-		user.GovernmentIDEnc = services.MaskSensitive(enc)
+		user.GovernmentIDEnc = enc
+	}
+	if req.PaymentReference != "" {
+		enc, err := encryptValue(h.Cfg.EncryptionKey, req.PaymentReference)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to encrypt payment reference"})
+		}
+		user.PaymentReferenceEnc = enc
+	}
+	if req.Address != "" {
+		enc, err := encryptValue(h.Cfg.EncryptionKey, req.Address)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to encrypt address"})
+		}
+		user.AddressEnc = enc
 	}
 	h.Store.SaveUser(user)
 	return c.JSON(http.StatusOK, sanitizeUser(user))
@@ -149,4 +176,11 @@ func (h *Handler) AdminDeleteUser(c echo.Context) error {
 	}
 	h.Store.DeleteUser(target)
 	return c.NoContent(http.StatusNoContent)
+}
+
+func encryptValue(key, value string) (string, error) {
+	if strings.TrimSpace(value) == "" {
+		return "", nil
+	}
+	return services.EncryptAES256([]byte(key), value)
 }

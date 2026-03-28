@@ -13,29 +13,6 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-func (h *Handler) Categories(c echo.Context) error {
-	return c.JSON(http.StatusOK, h.Store.ListCategories())
-}
-
-func (h *Handler) StatsSummary(c echo.Context) error {
-	bookings := h.Store.ListBookings()
-	out := models.StatsSummary{}
-	for _, b := range bookings {
-		if b.Status == "settled" {
-			out.SettledTrips++
-		} else {
-			out.ActiveBookings++
-			out.HeldDeposits += b.DepositAmount
-		}
-	}
-	out.InspectionsDue = out.ActiveBookings
-	return c.JSON(http.StatusOK, out)
-}
-
-func (h *Handler) Listings(c echo.Context) error {
-	return c.JSON(http.StatusOK, h.Store.ListListings())
-}
-
 func (h *Handler) Bookings(c echo.Context) error {
 	userID, _ := c.Get("userID").(string)
 	roles, _ := c.Get("roles").([]models.Role)
@@ -84,6 +61,49 @@ func (h *Handler) CreateBooking(c echo.Context) error {
 	h.Store.SaveBooking(booking)
 	h.Logger.Info("booking_created", "bookingID", booking.ID, "customerID", booking.CustomerID)
 	return c.JSON(http.StatusCreated, map[string]interface{}{"booking": booking, "estimate": estimate})
+}
+
+func (h *Handler) EstimateBooking(c echo.Context) error {
+	var req struct {
+		ListingID string  `json:"listingId"`
+		StartAt   string  `json:"startAt"`
+		EndAt     string  `json:"endAt"`
+		OdoStart  float64 `json:"odoStart"`
+		OdoEnd    float64 `json:"odoEnd"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid payload"})
+	}
+	listing, ok := h.Store.GetListing(req.ListingID)
+	if !ok {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "listing not found"})
+	}
+	startAt, err := time.Parse(time.RFC3339, req.StartAt)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid startAt timestamp"})
+	}
+	endAt, err := time.Parse(time.RFC3339, req.EndAt)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid endAt timestamp"})
+	}
+	if !endAt.After(startAt) {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "endAt must be after startAt"})
+	}
+	pricingCfg := h.Pricing
+	pricingCfg.IncludedMiles = listing.IncludedMiles
+	estimate := services.EstimateFare(pricingCfg, services.EstimateInput{
+		StartAt:  startAt,
+		EndAt:    endAt,
+		OdoStart: req.OdoStart,
+		OdoEnd:   req.OdoEnd,
+		Deposit:  listing.Deposit,
+	})
+	customerID, _ := c.Get("userID").(string)
+	h.Logger.Info("booking_estimate", "listingId", listing.ID, "customerId", customerID, "total", estimate.Total, "deposit", estimate.Deposit)
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"listingId": listing.ID,
+		"estimate":  estimate,
+	})
 }
 
 func (h *Handler) RedeemCoupon(c echo.Context) error {
@@ -146,6 +166,7 @@ func (h *Handler) CloseSettlement(c echo.Context) error {
 	h.Store.AppendLedger(bookingID, refund)
 	booking.Status = "settled"
 	h.Store.SaveBooking(booking)
+	h.Logger.Info("booking_settled", "bookingId", bookingID, "customerId", booking.CustomerID, "providerId", booking.ProviderID, "refundType", refundType, "totalCharged", booking.EstimatedAmount)
 
 	// RULES: no 3rd-party integrations in offline mode.
 	// Payment processor call intentionally stubbed for offline-first deployment.

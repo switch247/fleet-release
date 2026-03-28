@@ -19,30 +19,44 @@ type Handler struct {
 }
 
 type userResponse struct {
-	ID                 string        `json:"id"`
-	Username           string        `json:"username"`
-	Email              string        `json:"email"`
-	Roles              []models.Role `json:"roles"`
-	GovernmentIDMasked string        `json:"governmentIdMasked"`
+	ID                     string        `json:"id"`
+	Username               string        `json:"username"`
+	Email                  string        `json:"email"`
+	Roles                  []models.Role `json:"roles"`
+	GovernmentIDMasked     string        `json:"governmentIdMasked"`
+	PaymentReferenceMasked string        `json:"paymentReferenceMasked"`
+	AddressMasked          string        `json:"addressMasked"`
 }
 
 type createUserRequest struct {
-	Username     string        `json:"username"`
-	Email        string        `json:"email"`
-	Password     string        `json:"password"`
-	Roles        []models.Role `json:"roles"`
-	GovernmentID string        `json:"governmentId"`
+	Username         string        `json:"username"`
+	Email            string        `json:"email"`
+	Password         string        `json:"password"`
+	Roles            []models.Role `json:"roles"`
+	GovernmentID     string        `json:"governmentId"`
+	PaymentReference string        `json:"paymentReference"`
+	Address          string        `json:"address"`
 }
 
 type updateUserRequest struct {
-	Email        string        `json:"email"`
-	Password     string        `json:"password"`
-	Roles        []models.Role `json:"roles"`
-	GovernmentID string        `json:"governmentId"`
+	Email            string        `json:"email"`
+	Password         string        `json:"password"`
+	Roles            []models.Role `json:"roles"`
+	GovernmentID     string        `json:"governmentId"`
+	PaymentReference string        `json:"paymentReference"`
+	Address          string        `json:"address"`
 }
 
 func sanitizeUser(u models.User) userResponse {
-	return userResponse{ID: u.ID, Username: u.Username, Email: u.Email, Roles: u.Roles, GovernmentIDMasked: u.GovernmentIDEnc}
+	return userResponse{
+		ID:                     u.ID,
+		Username:               u.Username,
+		Email:                  u.Email,
+		Roles:                  u.Roles,
+		GovernmentIDMasked:     services.MaskSensitive(u.GovernmentIDEnc),
+		PaymentReferenceMasked: services.MaskSensitive(u.PaymentReferenceEnc),
+		AddressMasked:          services.MaskSensitive(u.AddressEnc),
+	}
 }
 
 func containsAdminRole(roles []models.Role) bool {

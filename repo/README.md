@@ -31,6 +31,7 @@ Offline-first FleetLease suite with React frontend and Go (Echo) backend for boo
 - Trusted proxy model: forwarded client IP is only honored from `TRUSTED_PROXIES`.
 - Admin-sensitive actions enforce MFA when `REQUIRE_ADMIN_MFA=true`.
 - Transport control: HTTPS enforced for non-whitelisted CIDRs, local HTTP only for configured test IP ranges.
+- Docker/Playwright tests use the `172.16.0.0/12` CIDR so the containerized NAT source is allowlisted; production overrides should narrow this down.
 
 ## Offline + Integrations
 - Booking requests can queue offline in frontend and sync later.
@@ -52,6 +53,8 @@ docker compose up --build
 - Profile update: `PATCH /auth/me`
 - Login audit trail: `GET /auth/login-history`
 - Dashboard stats: `GET /stats/summary`
+- Booking estimate preview: `POST /bookings/estimate`
+- Multi-level category browse: `GET /categories?view=tree`
 - Inspection verification: `GET /inspections/verify/:bookingID`
 - Ledger verification: `GET /ledger/:bookingID/verify`
 - Admin user management: `/admin/users` list/create and `/admin/users/:userID` update/delete (single admin enforced)
@@ -60,11 +63,17 @@ docker compose up --build
 - Messaging templates: `/admin/notification-templates`, `/admin/notifications/send`, `/admin/notifications/retry`
 - Worker metrics: `/admin/workers/metrics`
 - Backup operations: `/admin/backup/now`, `/admin/restore/now`, `/admin/backup/jobs`
+- Retention operations: `/admin/retention`, `/admin/retention/purge`
 
 ## Run Tests (Docker)
 ```bash
 docker compose run --rm test
 ```
+
+## Frontend Tests
+- `npm run test:unit` (Vitest/RTL for component assertions)
+- `npm run test:e2e` (Playwright API smoke covering booking → inspection → settlement → complaint → dispute PDF)
+- `npm run playwright:install` (install required browsers once before running E2E)
 
 ## Test Store Backend
 - Tests are configurable for storage backend:
@@ -72,6 +81,8 @@ docker compose run --rm test
   - `TEST_STORE_BACKEND=memory`
 - Optional postgres test DSN:
   - `TEST_DATABASE_URL=postgres://...`
+- Enable MFA guard during tests:
+  - `TEST_REQUIRE_ADMIN_MFA=true|false` (defaults to `true`; set to `false` for simpler admin scenarios)
 - If postgres is not reachable, the public test harness logs a hint and falls back to memory.
 
 ## Demo Users
@@ -84,12 +95,18 @@ docker compose run --rm test
 - Backup script: `backend/scripts/backup.sh`
 - Restore script: `backend/scripts/restore.sh` (defaults to latest backup if file path is omitted)
 - Default retention: backups 30 days, attachments 365 days, ledgers 7 years (all configurable via env).
+- Retention controls:
+  - `ATTACHMENT_RETENTION_DAYS` and `LEDGER_RETENTION_YEARS` drive both the nightly retention job and the backup helper purge routine.
 - Nightly backup scheduler: backend schedules a local backup every day at 02:00 server local time and records status in backup jobs.
+- Nightly purge scheduler: backend runs a purge job every day at 03:00 server local time for attachment and ledger retention rules.
+- If backup/restore scripts are missing, API returns `503` with `degraded` status (no simulated success).
 
 ## Notes
 - Admin endpoints support listing, creating, updating, and deleting users in the local control plane (self-delete is blocked, and only one admin is permitted).
 - Frontend loads `/auth/me` for the profile widget and the admin UI relies on `/admin/users`.
 - Runtime system-of-record is PostgreSQL (`STORE_BACKEND=postgres` by default); in-memory store is restricted to `APP_ENV=test`.
 - Email/SMS/payment remain mocked by design for offline mode.
+- Docker compose defaults are hardened: global insecure HTTP (`0.0.0.0/0`) is not enabled by default.
 - Deployment hardening guide: `docs/Deployment_Hardening.md`
 - Security checklist: `docs/Security_Checklist.md`
+- Testing mode guide: `docs/Testing_Modes.md`

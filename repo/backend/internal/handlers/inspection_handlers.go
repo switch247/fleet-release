@@ -88,6 +88,9 @@ func (h *Handler) AttachmentInit(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "video size exceeds 100MB"})
 	}
 	if existing, ok := h.Store.FindAttachmentByFingerprint(req.Fingerprint); ok {
+		if existing.BookingID != req.BookingID {
+			return c.JSON(http.StatusConflict, map[string]string{"error": "attachment fingerprint already used for another booking"})
+		}
 		return c.JSON(http.StatusOK, map[string]interface{}{"deduplicated": true, "attachment": existing})
 	}
 	_ = os.MkdirAll(h.Cfg.AttachmentDir, 0o755)

@@ -252,6 +252,18 @@ func (h *Handler) ListConsultationEvidence(c echo.Context) error {
 		if !canAccessBooking(actor, roles, booking) {
 			return c.JSON(http.StatusForbidden, map[string]string{"error": "forbidden"})
 		}
+		switch consultation.Visibility {
+		case "all":
+			// allowed once booking access passes
+		case "parties":
+			if !(hasRole(roles, models.RoleAdmin) || hasRole(roles, models.RoleCSA) || actor == booking.CustomerID || actor == booking.ProviderID) {
+				return c.JSON(http.StatusForbidden, map[string]string{"error": "forbidden by consultation visibility"})
+			}
+		default:
+			if !(hasRole(roles, models.RoleAdmin) || hasRole(roles, models.RoleCSA)) {
+				return c.JSON(http.StatusForbidden, map[string]string{"error": "forbidden by consultation visibility"})
+			}
+		}
 	}
 	return c.JSON(http.StatusOK, h.Store.ListConsultationAttachments(consultationID))
 }

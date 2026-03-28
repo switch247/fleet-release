@@ -21,7 +21,9 @@ type User struct {
 	LockedUntil     time.Time `json:"-"`
 	TOTPSecret      string    `json:"-"`
 	TOTPEnabled     bool      `json:"totpEnabled"`
-	GovernmentIDEnc string    `json:"governmentIdMasked"`
+	GovernmentIDEnc    string `json:"-"`
+	PaymentReferenceEnc string `json:"-"`
+	AddressEnc          string `json:"-"`
 }
 
 type Session struct {
@@ -43,8 +45,9 @@ type AuthEvent struct {
 }
 
 type Category struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	ParentID string `json:"parentId"`
 }
 
 type Listing struct {
@@ -107,6 +110,7 @@ type Attachment struct {
 	SizeBytes   int64  `json:"sizeBytes"`
 	Checksum    string `json:"checksum"`
 	Fingerprint string `json:"fingerprint"`
+	CreatedAt   time.Time `json:"createdAt"`
 }
 
 type LedgerEntry struct {
@@ -203,4 +207,12 @@ type PasswordResetEvidence struct {
 	EvidenceRef  string    `json:"evidenceRef"`
 	Reason       string    `json:"reason"`
 	CreatedAt    time.Time `json:"createdAt"`
+}
+
+type RetentionReport struct {
+	ID                 string    `json:"id"`
+	AttachmentsDeleted int       `json:"attachmentsDeleted"`
+	LedgerDeleted      int       `json:"ledgerDeleted"`
+	FileDeleteErrors   int       `json:"fileDeleteErrors"`
+	CreatedAt          time.Time `json:"createdAt"`
 }

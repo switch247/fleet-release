@@ -31,18 +31,20 @@ func (s *PostgresStore) Close() {
 func (s *PostgresStore) SaveUser(u models.User) {
 	ctx := context.Background()
 	_, _ = s.pool.Exec(ctx, `
-INSERT INTO users (id, username, password_hash, government_id_enc, failed_attempts, locked_until, totp_secret, totp_enabled, email, created_at)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,COALESCE((SELECT created_at FROM users WHERE id=$1), NOW()))
+INSERT INTO users (id, username, password_hash, government_id_enc, payment_reference_enc, address_enc, failed_attempts, locked_until, totp_secret, totp_enabled, email, created_at)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,COALESCE((SELECT created_at FROM users WHERE id=$1), NOW()))
 ON CONFLICT (id) DO UPDATE SET
 username=EXCLUDED.username,
 password_hash=EXCLUDED.password_hash,
 government_id_enc=EXCLUDED.government_id_enc,
+payment_reference_enc=EXCLUDED.payment_reference_enc,
+address_enc=EXCLUDED.address_enc,
 failed_attempts=EXCLUDED.failed_attempts,
 locked_until=EXCLUDED.locked_until,
 totp_secret=EXCLUDED.totp_secret,
 totp_enabled=EXCLUDED.totp_enabled,
 email=EXCLUDED.email`,
-		u.ID, u.Username, u.PasswordHash, u.GovernmentIDEnc, u.FailedAttempts, nullableTime(u.LockedUntil), u.TOTPSecret, u.TOTPEnabled, u.Email,
+		u.ID, u.Username, u.PasswordHash, u.GovernmentIDEnc, u.PaymentReferenceEnc, u.AddressEnc, u.FailedAttempts, nullableTime(u.LockedUntil), u.TOTPSecret, u.TOTPEnabled, u.Email,
 	)
 	_, _ = s.pool.Exec(ctx, `DELETE FROM user_roles WHERE user_id=$1`, u.ID)
 	for _, r := range u.Roles {
@@ -70,8 +72,8 @@ func (s *PostgresStore) GetUserByUsername(username string) (models.User, bool) {
 	ctx := context.Background()
 	var u models.User
 	var locked sql.NullTime
-	err := s.pool.QueryRow(ctx, `SELECT id, username, COALESCE(email,''), password_hash, government_id_enc, failed_attempts, locked_until, COALESCE(totp_secret,''), COALESCE(totp_enabled,false) FROM users WHERE username=$1`, username).
-		Scan(&u.ID, &u.Username, &u.Email, &u.PasswordHash, &u.GovernmentIDEnc, &u.FailedAttempts, &locked, &u.TOTPSecret, &u.TOTPEnabled)
+	err := s.pool.QueryRow(ctx, `SELECT id, username, COALESCE(email,''), password_hash, government_id_enc, COALESCE(payment_reference_enc,''), COALESCE(address_enc,''), failed_attempts, locked_until, COALESCE(totp_secret,''), COALESCE(totp_enabled,false) FROM users WHERE username=$1`, username).
+		Scan(&u.ID, &u.Username, &u.Email, &u.PasswordHash, &u.GovernmentIDEnc, &u.PaymentReferenceEnc, &u.AddressEnc, &u.FailedAttempts, &locked, &u.TOTPSecret, &u.TOTPEnabled)
 	if err != nil {
 		return models.User{}, false
 	}
@@ -86,8 +88,8 @@ func (s *PostgresStore) GetUserByID(id string) (models.User, bool) {
 	ctx := context.Background()
 	var u models.User
 	var locked sql.NullTime
-	err := s.pool.QueryRow(ctx, `SELECT id, username, COALESCE(email,''), password_hash, government_id_enc, failed_attempts, locked_until, COALESCE(totp_secret,''), COALESCE(totp_enabled,false) FROM users WHERE id=$1`, id).
-		Scan(&u.ID, &u.Username, &u.Email, &u.PasswordHash, &u.GovernmentIDEnc, &u.FailedAttempts, &locked, &u.TOTPSecret, &u.TOTPEnabled)
+	err := s.pool.QueryRow(ctx, `SELECT id, username, COALESCE(email,''), password_hash, government_id_enc, COALESCE(payment_reference_enc,''), COALESCE(address_enc,''), failed_attempts, locked_until, COALESCE(totp_secret,''), COALESCE(totp_enabled,false) FROM users WHERE id=$1`, id).
+		Scan(&u.ID, &u.Username, &u.Email, &u.PasswordHash, &u.GovernmentIDEnc, &u.PaymentReferenceEnc, &u.AddressEnc, &u.FailedAttempts, &locked, &u.TOTPSecret, &u.TOTPEnabled)
 	if err != nil {
 		return models.User{}, false
 	}
@@ -189,12 +191,12 @@ func (s *PostgresStore) ListAuthEventsByUser(userID string, limit int) []models.
 
 func (s *PostgresStore) SaveCategory(c models.Category) {
 	ctx := context.Background()
-	_, _ = s.pool.Exec(ctx, `INSERT INTO categories (id,name) VALUES ($1,$2) ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name`, c.ID, c.Name)
+	_, _ = s.pool.Exec(ctx, `INSERT INTO categories (id,name,parent_id) VALUES ($1,$2,$3) ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name,parent_id=EXCLUDED.parent_id`, c.ID, c.Name, nullableUUID(c.ParentID))
 }
 
 func (s *PostgresStore) ListCategories() []models.Category {
 	ctx := context.Background()
-	rows, err := s.pool.Query(ctx, `SELECT id,name FROM categories ORDER BY name`)
+	rows, err := s.pool.Query(ctx, `SELECT id,name,COALESCE(parent_id::text,'') FROM categories ORDER BY name`)
 	if err != nil {
 		return nil
 	}
@@ -202,7 +204,7 @@ func (s *PostgresStore) ListCategories() []models.Category {
 	out := make([]models.Category, 0)
 	for rows.Next() {
 		var c models.Category
-		if rows.Scan(&c.ID, &c.Name) == nil {
+		if rows.Scan(&c.ID, &c.Name, &c.ParentID) == nil {
 			out = append(out, c)
 		}
 	}
@@ -212,7 +214,7 @@ func (s *PostgresStore) ListCategories() []models.Category {
 func (s *PostgresStore) GetCategory(id string) (models.Category, bool) {
 	ctx := context.Background()
 	var c models.Category
-	err := s.pool.QueryRow(ctx, `SELECT id,name FROM categories WHERE id=$1`, id).Scan(&c.ID, &c.Name)
+	err := s.pool.QueryRow(ctx, `SELECT id,name,COALESCE(parent_id::text,'') FROM categories WHERE id=$1`, id).Scan(&c.ID, &c.Name, &c.ParentID)
 	if err != nil {
 		return models.Category{}, false
 	}
@@ -353,8 +355,8 @@ func (s *PostgresStore) ListInspections(bookingID string) []models.InspectionRev
 func (s *PostgresStore) SaveAttachment(a models.Attachment) {
 	ctx := context.Background()
 	_, _ = s.pool.Exec(ctx, `
-INSERT INTO attachments (id,booking_id,type,path,size_bytes,checksum,fingerprint)
-VALUES ($1,$2,$3,$4,$5,$6,$7)
+INSERT INTO attachments (id,booking_id,type,path,size_bytes,checksum,fingerprint,created_at)
+VALUES ($1,$2,$3,$4,$5,$6,$7,COALESCE((SELECT created_at FROM attachments WHERE id=$1), NOW()))
 ON CONFLICT (id) DO UPDATE SET
 path=EXCLUDED.path,size_bytes=EXCLUDED.size_bytes,checksum=EXCLUDED.checksum,fingerprint=EXCLUDED.fingerprint`,
 		a.ID, a.BookingID, a.Type, a.Path, a.SizeBytes, a.Checksum, a.Fingerprint,
@@ -364,8 +366,8 @@ path=EXCLUDED.path,size_bytes=EXCLUDED.size_bytes,checksum=EXCLUDED.checksum,fin
 func (s *PostgresStore) FindAttachmentByFingerprint(fingerprint string) (models.Attachment, bool) {
 	ctx := context.Background()
 	var a models.Attachment
-	err := s.pool.QueryRow(ctx, `SELECT id,booking_id,type,path,size_bytes,checksum,fingerprint FROM attachments WHERE fingerprint=$1`, fingerprint).
-		Scan(&a.ID, &a.BookingID, &a.Type, &a.Path, &a.SizeBytes, &a.Checksum, &a.Fingerprint)
+	err := s.pool.QueryRow(ctx, `SELECT id,booking_id,type,path,size_bytes,checksum,fingerprint,created_at FROM attachments WHERE fingerprint=$1`, fingerprint).
+		Scan(&a.ID, &a.BookingID, &a.Type, &a.Path, &a.SizeBytes, &a.Checksum, &a.Fingerprint, &a.CreatedAt)
 	if err != nil {
 		return models.Attachment{}, false
 	}
@@ -375,12 +377,29 @@ func (s *PostgresStore) FindAttachmentByFingerprint(fingerprint string) (models.
 func (s *PostgresStore) GetAttachment(id string) (models.Attachment, bool) {
 	ctx := context.Background()
 	var a models.Attachment
-	err := s.pool.QueryRow(ctx, `SELECT id,booking_id,type,path,size_bytes,checksum,fingerprint FROM attachments WHERE id=$1`, id).
-		Scan(&a.ID, &a.BookingID, &a.Type, &a.Path, &a.SizeBytes, &a.Checksum, &a.Fingerprint)
+	err := s.pool.QueryRow(ctx, `SELECT id,booking_id,type,path,size_bytes,checksum,fingerprint,created_at FROM attachments WHERE id=$1`, id).
+		Scan(&a.ID, &a.BookingID, &a.Type, &a.Path, &a.SizeBytes, &a.Checksum, &a.Fingerprint, &a.CreatedAt)
 	if err != nil {
 		return models.Attachment{}, false
 	}
 	return a, true
+}
+
+func (s *PostgresStore) PurgeAttachmentsOlderThan(cutoff time.Time) []models.Attachment {
+	ctx := context.Background()
+	rows, err := s.pool.Query(ctx, `DELETE FROM attachments WHERE created_at < $1 RETURNING id,booking_id,type,path,size_bytes,checksum,fingerprint,created_at`, cutoff)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	out := make([]models.Attachment, 0)
+	for rows.Next() {
+		var a models.Attachment
+		if rows.Scan(&a.ID, &a.BookingID, &a.Type, &a.Path, &a.SizeBytes, &a.Checksum, &a.Fingerprint, &a.CreatedAt) == nil {
+			out = append(out, a)
+		}
+	}
+	return out
 }
 
 func (s *PostgresStore) AppendLedger(bookingID string, e models.LedgerEntry) {
@@ -405,6 +424,15 @@ func (s *PostgresStore) ListLedger(bookingID string) []models.LedgerEntry {
 		}
 	}
 	return out
+}
+
+func (s *PostgresStore) PurgeLedgerOlderThan(cutoff time.Time) int {
+	ctx := context.Background()
+	res, err := s.pool.Exec(ctx, `DELETE FROM ledger_entries WHERE created_at < $1`, cutoff)
+	if err != nil {
+		return 0
+	}
+	return int(res.RowsAffected())
 }
 
 func (s *PostgresStore) SaveComplaint(c models.Complaint) {
@@ -648,6 +676,33 @@ func (s *PostgresStore) ListBackupJobs() []models.BackupJob {
 		var b models.BackupJob
 		if rows.Scan(&b.ID, &b.Type, &b.Status, &b.Artifact, &b.RequestedBy, &b.CreatedAt, &b.FinishedAt, &b.Error) == nil {
 			out = append(out, b)
+		}
+	}
+	return out
+}
+
+func (s *PostgresStore) SaveRetentionReport(report models.RetentionReport) {
+	ctx := context.Background()
+	_, _ = s.pool.Exec(ctx, `INSERT INTO retention_jobs (id,attachments_deleted,ledger_deleted,file_delete_errors,created_at) VALUES ($1,$2,$3,$4,$5)`,
+		report.ID, report.AttachmentsDeleted, report.LedgerDeleted, report.FileDeleteErrors, report.CreatedAt,
+	)
+}
+
+func (s *PostgresStore) ListRetentionReports(limit int) []models.RetentionReport {
+	ctx := context.Background()
+	if limit <= 0 {
+		limit = 20
+	}
+	rows, err := s.pool.Query(ctx, `SELECT id,attachments_deleted,ledger_deleted,file_delete_errors,created_at FROM retention_jobs ORDER BY created_at DESC LIMIT $1`, limit)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	out := make([]models.RetentionReport, 0)
+	for rows.Next() {
+		var report models.RetentionReport
+		if rows.Scan(&report.ID, &report.AttachmentsDeleted, &report.LedgerDeleted, &report.FileDeleteErrors, &report.CreatedAt) == nil {
+			out = append(out, report)
 		}
 	}
 	return out

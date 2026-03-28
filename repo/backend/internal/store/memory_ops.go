@@ -1,6 +1,11 @@
 package store
 
-import "fleetlease/backend/internal/models"
+import (
+	"sort"
+	"time"
+
+	"fleetlease/backend/internal/models"
+)
 
 func (s *MemoryStore) SaveUser(u models.User) {
 	s.mu.Lock()
@@ -200,6 +205,9 @@ func (s *MemoryStore) ListInspections(bookingID string) []models.InspectionRevis
 func (s *MemoryStore) SaveAttachment(a models.Attachment) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if a.CreatedAt.IsZero() {
+		a.CreatedAt = time.Now().UTC()
+	}
 	s.Attachments[a.ID] = a
 }
 
@@ -221,6 +229,22 @@ func (s *MemoryStore) GetAttachment(id string) (models.Attachment, bool) {
 	return v, ok
 }
 
+func (s *MemoryStore) PurgeAttachmentsOlderThan(cutoff time.Time) []models.Attachment {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	removed := make([]models.Attachment, 0)
+	for id, attachment := range s.Attachments {
+		if attachment.CreatedAt.IsZero() {
+			continue
+		}
+		if attachment.CreatedAt.Before(cutoff) {
+			removed = append(removed, attachment)
+			delete(s.Attachments, id)
+		}
+	}
+	return removed
+}
+
 func (s *MemoryStore) AppendLedger(bookingID string, e models.LedgerEntry) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -231,6 +255,24 @@ func (s *MemoryStore) ListLedger(bookingID string) []models.LedgerEntry {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return append([]models.LedgerEntry{}, s.Ledgers[bookingID]...)
+}
+
+func (s *MemoryStore) PurgeLedgerOlderThan(cutoff time.Time) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	removed := 0
+	for bookingID, entries := range s.Ledgers {
+		kept := make([]models.LedgerEntry, 0, len(entries))
+		for _, entry := range entries {
+			if entry.CreatedAt.Before(cutoff) {
+				removed++
+				continue
+			}
+			kept = append(kept, entry)
+		}
+		s.Ledgers[bookingID] = kept
+	}
+	return removed
 }
 
 func (s *MemoryStore) SaveComplaint(c models.Complaint) {
@@ -387,6 +429,28 @@ func (s *MemoryStore) ListBackupJobs() []models.BackupJob {
 	out := make([]models.BackupJob, 0, len(s.BackupJobs))
 	for _, v := range s.BackupJobs {
 		out = append(out, v)
+	}
+	return out
+}
+
+func (s *MemoryStore) SaveRetentionReport(report models.RetentionReport) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.RetentionReports[report.ID] = report
+}
+
+func (s *MemoryStore) ListRetentionReports(limit int) []models.RetentionReport {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]models.RetentionReport, 0, len(s.RetentionReports))
+	for _, report := range s.RetentionReports {
+		out = append(out, report)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].CreatedAt.After(out[j].CreatedAt)
+	})
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
 	}
 	return out
 }

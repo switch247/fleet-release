@@ -34,6 +34,7 @@ func main() {
 	repo := initRepository(cfg, logger)
 	seed(repo, cfg)
 	startNightlyBackupScheduler(repo, logger)
+	startRetentionPurgeScheduler(repo, cfg, logger)
 
 	e := api.NewRouter(cfg, repo, logger, securityLogger)
 	addr := ":" + cfg.Port
@@ -80,6 +81,20 @@ func startNightlyBackupScheduler(st store.Repository, logger *slog.Logger) {
 			job.FinishedAt = time.Now().UTC()
 			st.SaveBackupJob(job)
 			logger.Info("nightly backup completed")
+		}
+	}()
+}
+
+func startRetentionPurgeScheduler(st store.Repository, cfg config.Config, logger *slog.Logger) {
+	go func() {
+		for {
+			now := time.Now()
+			next := time.Date(now.Year(), now.Month(), now.Day(), 3, 0, 0, 0, now.Location())
+			if !next.After(now) {
+				next = next.Add(24 * time.Hour)
+			}
+			time.Sleep(time.Until(next))
+			services.RunRetentionPurge(st, cfg, logger)
 		}
 	}()
 }

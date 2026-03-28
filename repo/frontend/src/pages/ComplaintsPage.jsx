@@ -1,6 +1,6 @@
 ﻿import React, { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { arbitrateComplaint, bookings, complaints, createComplaint } from '../lib/api';
+import { arbitrateComplaint, bookings, complaints, createComplaint, exportDisputePDF } from '../lib/api';
 import { Card, CardTitle } from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
@@ -28,6 +28,7 @@ export default function ComplaintsPage() {
     mutationFn: ({ id, payload }) => arbitrateComplaint(id, payload),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['complaints'] }),
   });
+  const exportMutation = useMutation({ mutationFn: exportDisputePDF });
 
   const canArbitrate = user?.roles?.includes('csa') || user?.roles?.includes('admin');
 
@@ -45,13 +46,30 @@ export default function ComplaintsPage() {
     {
       key: 'actions',
       title: 'Actions',
-      render: (row) => canArbitrate ? (
+      render: (row) => (
         <div className="flex items-center gap-2">
-          <Button size="sm" onClick={() => { setSelectedComplaint(row); setModalDecision({ status: 'resolved', outcome: '' }); setModalOpen(true); }}>Arbitrate</Button>
+          {canArbitrate ? (
+            <Button size="sm" onClick={() => { setSelectedComplaint(row); setModalDecision({ status: 'resolved', outcome: '' }); setModalOpen(true); }}>Arbitrate</Button>
+          ) : null}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={async () => {
+              const blob = await exportMutation.mutateAsync(row.id);
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `dispute-${row.id}.pdf`;
+              a.click();
+              URL.revokeObjectURL(url);
+            }}
+          >
+            Export PDF
+          </Button>
         </div>
-      ) : 'N/A',
+      ),
     },
-  ], [arbitrateMutation, canArbitrate]);
+  ], [canArbitrate, exportMutation]);
 
   return (
     <div className="space-y-6">

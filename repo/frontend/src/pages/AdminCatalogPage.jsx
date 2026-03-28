@@ -26,7 +26,8 @@ export default function AdminCatalogPage() {
   const [results, setResults] = useState([]);
   const [selectedIds, setSelectedIds] = useState([]);
   const [categoryName, setCategoryName] = useState('');
-  const [editCategory, setEditCategory] = useState({ id: '', name: '' });
+  const [categoryParentId, setCategoryParentId] = useState('');
+  const [editCategory, setEditCategory] = useState({ id: '', name: '', parentId: '' });
   const [editListing, setEditListing] = useState({ id: '', name: '', includedMiles: '', deposit: '', available: true });
 
   const createCategoryMutation = useMutation({
@@ -34,6 +35,7 @@ export default function AdminCatalogPage() {
     onSuccess: () => {
       categoriesQuery.refetch();
       setCategoryName('');
+      setCategoryParentId('');
     },
   });
 
@@ -41,7 +43,7 @@ export default function AdminCatalogPage() {
     mutationFn: ({ id, payload }) => adminUpdateCategory(id, payload),
     onSuccess: () => {
       categoriesQuery.refetch();
-      setEditCategory({ id: '', name: '' });
+      setEditCategory({ id: '', name: '', parentId: '' });
     },
   });
 
@@ -84,18 +86,30 @@ export default function AdminCatalogPage() {
         <CardTitle>Category CRUD</CardTitle>
         <div className="mt-4 flex gap-2">
           <Input placeholder="New category name" value={categoryName} onChange={(e) => setCategoryName(e.target.value)} />
-          <Button onClick={() => createCategoryMutation.mutate({ name: categoryName })}>Create</Button>
+          <select className="rounded-xl border border-slate-700 bg-slate-900/70 px-3 py-2 text-sm" value={categoryParentId} onChange={(e) => setCategoryParentId(e.target.value)}>
+            <option value="">No parent</option>
+            {(categoriesQuery.data || []).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+          </select>
+          <Button onClick={() => createCategoryMutation.mutate({ name: categoryName, parentId: categoryParentId })}>Create</Button>
         </div>
         <div className="mt-4">
           <DataTable
             columns={[
               { key: 'name', title: 'Name' },
               {
+                key: 'parentId',
+                title: 'Parent',
+                render: (row) => {
+                  const parent = (categoriesQuery.data || []).find((c) => c.id === row.parentId);
+                  return parent ? parent.name : '-';
+                },
+              },
+              {
                 key: 'actions',
                 title: 'Actions',
                 render: (row) => (
                   <div className="flex gap-2">
-                    <Button variant="outline" onClick={() => setEditCategory({ id: row.id, name: row.name })}>Edit</Button>
+                    <Button variant="outline" onClick={() => setEditCategory({ id: row.id, name: row.name, parentId: row.parentId || '' })}>Edit</Button>
                     <Button variant="danger" onClick={() => deleteCategoryMutation.mutate(row.id)}>Delete</Button>
                   </div>
                 ),
@@ -108,7 +122,11 @@ export default function AdminCatalogPage() {
         {editCategory.id && (
           <div className="mt-3 flex gap-2">
             <Input value={editCategory.name} onChange={(e) => setEditCategory((prev) => ({ ...prev, name: e.target.value }))} />
-            <Button onClick={() => updateCategoryMutation.mutate({ id: editCategory.id, payload: { name: editCategory.name } })}>Save</Button>
+            <select className="rounded-xl border border-slate-700 bg-slate-900/70 px-3 py-2 text-sm" value={editCategory.parentId} onChange={(e) => setEditCategory((prev) => ({ ...prev, parentId: e.target.value }))}>
+              <option value="">No parent</option>
+              {(categoriesQuery.data || []).filter((category) => category.id !== editCategory.id).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+            </select>
+            <Button onClick={() => updateCategoryMutation.mutate({ id: editCategory.id, payload: { name: editCategory.name, parentId: editCategory.parentId } })}>Save</Button>
           </div>
         )}
       </Card>

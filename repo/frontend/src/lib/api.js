@@ -71,6 +71,7 @@ export const statsSummary = () => api('/stats/summary');
 export const listings = () => api('/listings');
 export const categories = () => api('/categories');
 export const bookings = () => api('/bookings');
+export const estimateBooking = (payload) => api('/bookings/estimate', { method: 'POST', body: JSON.stringify(payload) });
 export const createBooking = (payload) => api('/bookings', { method: 'POST', body: JSON.stringify(payload) });
 export const inspectionsVerify = (bookingID) => api(`/inspections/verify/${bookingID}`);
 export const listInspections = async (bookingId) => {
@@ -147,6 +148,18 @@ export const adminWorkerMetrics = () => api('/admin/workers/metrics');
 export const complaints = (bookingId = '') => api(`/complaints${bookingId ? `?bookingId=${encodeURIComponent(bookingId)}` : ''}`);
 export const createComplaint = (payload) => api('/complaints', { method: 'POST', body: JSON.stringify(payload) });
 export const arbitrateComplaint = (id, payload) => api(`/complaints/${id}/arbitrate`, { method: 'PATCH', body: JSON.stringify(payload) });
+export async function exportDisputePDF(id) {
+  const token = localStorage.getItem('token');
+  const resp = await fetch(`${API_BASE}/exports/dispute-pdf/${encodeURIComponent(id)}`, {
+    method: 'GET',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!resp.ok) {
+    const payload = await resp.json().catch(() => ({ error: `request failed: ${resp.status}` }));
+    throw new Error(payload.error || 'request failed');
+  }
+  return resp.blob();
+}
 export const consultations = (bookingId) => api(`/consultations?bookingId=${encodeURIComponent(bookingId)}`);
 export const consultationsForUser = () => api('/consultations');
 export const createConsultation = (payload) => api('/consultations', { method: 'POST', body: JSON.stringify(payload) });

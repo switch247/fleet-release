@@ -12,7 +12,8 @@ import (
 
 func (h *Handler) AdminCreateCategory(c echo.Context) error {
 	var req struct {
-		Name string `json:"name"`
+		Name     string `json:"name"`
+		ParentID string `json:"parentId"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid payload"})
@@ -21,9 +22,16 @@ func (h *Handler) AdminCreateCategory(c echo.Context) error {
 	if name == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "name is required"})
 	}
+	parentID := strings.TrimSpace(req.ParentID)
+	if parentID != "" {
+		if _, ok := h.Store.GetCategory(parentID); !ok {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "parent category not found"})
+		}
+	}
 	category := models.Category{
-		ID:   uuid.NewString(),
-		Name: name,
+		ID:       uuid.NewString(),
+		Name:     name,
+		ParentID: parentID,
 	}
 	h.Store.SaveCategory(category)
 	h.Logger.Info("admin_category_created", "categoryID", category.ID, "name", category.Name)
@@ -41,7 +49,8 @@ func (h *Handler) AdminUpdateCategory(c echo.Context) error {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "category not found"})
 	}
 	var req struct {
-		Name string `json:"name"`
+		Name     string  `json:"name"`
+		ParentID *string `json:"parentId"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid payload"})
@@ -51,6 +60,18 @@ func (h *Handler) AdminUpdateCategory(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "name is required"})
 	}
 	category.Name = name
+	if req.ParentID != nil {
+		parentID := strings.TrimSpace(*req.ParentID)
+		if parentID == category.ID {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "category cannot parent itself"})
+		}
+		if parentID != "" {
+			if _, ok := h.Store.GetCategory(parentID); !ok {
+				return c.JSON(http.StatusNotFound, map[string]string{"error": "parent category not found"})
+			}
+		}
+		category.ParentID = parentID
+	}
 	h.Store.SaveCategory(category)
 	h.Logger.Info("admin_category_updated", "categoryID", category.ID)
 	return c.JSON(http.StatusOK, category)
@@ -64,6 +85,11 @@ func (h *Handler) AdminDeleteCategory(c echo.Context) error {
 	for _, listing := range h.Store.ListListings() {
 		if listing.CategoryID == categoryID {
 			return c.JSON(http.StatusConflict, map[string]string{"error": "category has listings and cannot be deleted"})
+		}
+	}
+	for _, category := range h.Store.ListCategories() {
+		if category.ParentID == categoryID {
+			return c.JSON(http.StatusConflict, map[string]string{"error": "category has child categories and cannot be deleted"})
 		}
 	}
 	h.Store.DeleteCategory(categoryID)

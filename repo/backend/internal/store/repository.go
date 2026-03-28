@@ -1,6 +1,10 @@
 package store
 
-import "fleetlease/backend/internal/models"
+import (
+	"time"
+
+	"fleetlease/backend/internal/models"
+)
 
 type Repository interface {
 	SaveUser(u models.User)
@@ -35,9 +39,11 @@ type Repository interface {
 	SaveAttachment(a models.Attachment)
 	FindAttachmentByFingerprint(fingerprint string) (models.Attachment, bool)
 	GetAttachment(id string) (models.Attachment, bool)
+	PurgeAttachmentsOlderThan(cutoff time.Time) []models.Attachment
 
 	AppendLedger(bookingID string, e models.LedgerEntry)
 	ListLedger(bookingID string) []models.LedgerEntry
+	PurgeLedgerOlderThan(cutoff time.Time) int
 
 	SaveComplaint(c models.Complaint)
 	GetComplaint(id string) (models.Complaint, bool)
@@ -63,6 +69,8 @@ type Repository interface {
 	SaveBackupJob(job models.BackupJob)
 	ListBackupJobs() []models.BackupJob
 	SavePasswordResetEvidence(e models.PasswordResetEvidence)
+	SaveRetentionReport(r models.RetentionReport)
+	ListRetentionReports(limit int) []models.RetentionReport
 
 	MarkCouponUsed(code, bookingID string) bool
 }
