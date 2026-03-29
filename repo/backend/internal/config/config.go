@@ -27,6 +27,7 @@ type Config struct {
 	LedgerRetentionYears      int
 	NotificationRetryMax      int
 	NotificationRetryBackoffS int
+	RetentionPurgeMinutes     int
 	RequireAdminMFA           bool
 }
 
@@ -52,6 +53,7 @@ func Load() Config {
 		LedgerRetentionYears:      getEnvInt("LEDGER_RETENTION_YEARS", 7),
 		NotificationRetryMax:      getEnvInt("NOTIFICATION_RETRY_MAX", 3),
 		NotificationRetryBackoffS: getEnvInt("NOTIFICATION_RETRY_BACKOFF_SECONDS", 30),
+		RetentionPurgeMinutes:     getEnvInt("RETENTION_PURGE_INTERVAL_MINUTES", 1440),
 		RequireAdminMFA:           getEnvBool("REQUIRE_ADMIN_MFA", true),
 	}
 }

@@ -44,6 +44,7 @@ func (h *Handler) AdminBackupNow(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]interface{}{"job": job, "error": "backup failed"})
 	}
 	if degraded {
+		h.Logger.Warn("backup_script_unavailable", "actor", actor, "details", output)
 		job.Status = "degraded"
 		job.Error = output
 		job.Artifact = "backup-script-missing"
@@ -89,6 +90,7 @@ func (h *Handler) AdminRestoreNow(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]interface{}{"job": job, "error": "restore failed"})
 	}
 	if degraded {
+		h.Logger.Warn("restore_script_unavailable", "actor", actor, "details", output)
 		job.Status = "degraded"
 		job.Error = output
 		job.Artifact = "restore-script-missing"

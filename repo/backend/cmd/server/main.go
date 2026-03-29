@@ -87,16 +87,23 @@ func startNightlyBackupScheduler(st store.Repository, logger *slog.Logger) {
 
 func startRetentionPurgeScheduler(st store.Repository, cfg config.Config, logger *slog.Logger) {
 	go func() {
-		for {
-			now := time.Now()
-			next := time.Date(now.Year(), now.Month(), now.Day(), 3, 0, 0, 0, now.Location())
-			if !next.After(now) {
-				next = next.Add(24 * time.Hour)
-			}
-			time.Sleep(time.Until(next))
-			services.RunRetentionPurge(st, cfg, logger)
+		interval := time.Duration(cfg.RetentionPurgeMinutes) * time.Minute
+		if interval <= 0 {
+			interval = 24 * time.Hour
+		}
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		// Run immediately on startup.
+		forceRunRetention(st, cfg, logger)
+		for range ticker.C {
+			forceRunRetention(st, cfg, logger)
 		}
 	}()
+}
+
+func forceRunRetention(st store.Repository, cfg config.Config, logger *slog.Logger) {
+	result := services.RunRetentionPurge(st, cfg, logger)
+	logger.Info("scheduled_retention_purge", "reportID", result.ID, "attachmentsDeleted", result.AttachmentsDeleted, "ledgerDeleted", result.LedgerDeleted)
 }
 
 func initRepository(cfg config.Config, logger *slog.Logger) store.Repository {

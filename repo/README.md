@@ -32,6 +32,7 @@ Offline-first FleetLease suite with React frontend and Go (Echo) backend for boo
 - Admin-sensitive actions enforce MFA when `REQUIRE_ADMIN_MFA=true`.
 - Transport control: HTTPS enforced for non-whitelisted CIDRs, local HTTP only for configured test IP ranges.
 - Docker/Playwright tests use the `172.16.0.0/12` CIDR so the containerized NAT source is allowlisted; production overrides should narrow this down.
+- The `RETENTION_PURGE_INTERVAL_MINUTES` env controls how often the backend cleans attachments (`ATTACHMENT_RETENTION_DAYS`) and ledger entries (`LEDGER_RETENTION_YEARS`); the purge job logs `retention_purge_completed`.
 
 ## Offline + Integrations
 - Booking requests can queue offline in frontend and sync later.
@@ -97,6 +98,7 @@ docker compose run --rm test
 - Default retention: backups 30 days, attachments 365 days, ledgers 7 years (all configurable via env).
 - Retention controls:
   - `ATTACHMENT_RETENTION_DAYS` and `LEDGER_RETENTION_YEARS` drive both the nightly retention job and the backup helper purge routine.
+  - `RETENTION_PURGE_INTERVAL_MINUTES` controls how often the retention worker runs (default 1440 minutes / daily).
 - Nightly backup scheduler: backend schedules a local backup every day at 02:00 server local time and records status in backup jobs.
 - Nightly purge scheduler: backend runs a purge job every day at 03:00 server local time for attachment and ledger retention rules.
 - If backup/restore scripts are missing, API returns `503` with `degraded` status (no simulated success).
