@@ -27,6 +27,7 @@ type EstimateResult struct {
 	NightSurcharge float64 `json:"nightSurcharge"`
 	Total          float64 `json:"total"`
 	Deposit        float64 `json:"deposit"`
+	IncludedMiles  float64 `json:"includedMiles"`
 }
 
 func DefaultPricingConfig() PricingConfig {
@@ -80,6 +81,7 @@ func EstimateFare(cfg PricingConfig, in EstimateInput) EstimateResult {
 		NightSurcharge: round2(night),
 		Total:          round2(total),
 		Deposit:        round2(deposit),
+		IncludedMiles:  cfg.IncludedMiles,
 	}
 }
 

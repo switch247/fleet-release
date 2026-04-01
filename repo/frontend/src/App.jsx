@@ -4,6 +4,7 @@ import { useAuth } from './auth/AuthProvider';
 import LoginPage from './pages/LoginPage';
 import AppShell from './components/layout/AppShell';
 import OverviewPage from './pages/OverviewPage';
+import CatalogPage from './pages/CatalogPage';
 import BookingsPage from './pages/BookingsPage';
 import InspectionsPage from './pages/InspectionsPage';
 import ProfilePage from './pages/ProfilePage';
@@ -45,6 +46,7 @@ export default function App() {
       >
         <Route index element={<Navigate to="/overview" replace />} />
         <Route path="overview" element={<OverviewPage />} />
+        <Route path="catalog" element={<CatalogPage />} />
         <Route path="bookings" element={<BookingsPage />} />
         <Route path="inspections" element={<InspectionsPage />} />
         <Route path="complaints" element={<ComplaintsPage />} />

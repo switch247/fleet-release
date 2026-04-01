@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { enqueue, getQueue } from '../offline/queue';
+import { enqueue, getQueue, flushQueue } from '../offline/queue';
 import { bookings, createBooking, estimateBooking, listings } from '../lib/api';
 import { Card, CardTitle } from '../components/ui/Card';
 import Button from '../components/ui/Button';
@@ -39,6 +39,20 @@ export default function BookingsPage() {
       setEstimateError(err.message);
     },
   });
+
+  const syncQueue = async () => {
+    try {
+      await flushQueue(async (item) => {
+        if (item.type === 'booking') {
+          await createBooking(item.payload);
+        }
+      });
+      setQueueSize(0);
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
+    } catch (error) {
+      console.error('Sync failed:', error);
+    }
+  };
 
   const submitBooking = async () => {
     const payload = {
@@ -102,6 +116,7 @@ export default function BookingsPage() {
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="neutral">Offline queue: {queueSize}</Badge>
+          {queueSize > 0 && <Button variant="outline" onClick={() => syncQueue()}>Sync Queue</Button>}
           <Button onClick={() => setOpen(true)}>New Booking</Button>
         </div>
       </header>

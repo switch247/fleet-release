@@ -166,6 +166,15 @@ export default function InspectionsPage() {
         </Card>
       )}
 
+      {/* Settlement button */}
+      {bookingID && inspectionsQuery.data && inspectionsQuery.data.length > 0 && !settlement && (
+        <Card>
+          <CardTitle>Close Settlement</CardTitle>
+          <p className="text-sm text-slate-400 mt-2">Finalize the trip with charge adjustments and deposit refund/deduction.</p>
+          <Button className="mt-3" onClick={() => settleMutation.mutate()}>Settle Trip</Button>
+        </Card>
+      )}
+
       {/* Multi-step modal */}
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Inspection Wizard" footer={(
         <div className="flex items-center gap-2">
@@ -228,6 +237,24 @@ export default function InspectionsPage() {
           </div>
         )}
       </Modal>
+
+      {settlement && (
+        <Card>
+          <CardTitle>Settlement Summary</CardTitle>
+          <div className="mt-2 space-y-2">
+            {settlement.entries.map((entry, i) => (
+              <div key={i} className="flex justify-between text-sm">
+                <span>{entry.description}</span>
+                <span>${entry.amount.toFixed(2)}</span>
+              </div>
+            ))}
+            <div className="border-t border-slate-800 pt-2 flex justify-between font-semibold">
+              <span>Total</span>
+              <span>${settlement.entries.reduce((sum, e) => sum + e.amount, 0).toFixed(2)}</span>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {status && <p className="text-sm text-cyan-300">{status}</p>}
     </div>
