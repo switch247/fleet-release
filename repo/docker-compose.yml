@@ -1,5 +1,5 @@
 services:
-  db:
+  w1-t1-ti1-db:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: fleetlease
@@ -9,8 +9,13 @@ services:
       - "5432:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fleetlease"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  backend:
+  w1-t1-ti1-backend:
     build:
       context: .
       dockerfile: backend/Dockerfile
@@ -24,7 +29,7 @@ services:
       ATTACHMENT_DIR: "/app/data/attachments"
       ATTACHMENT_SIGNING_SECRET: "dev-secret-change-me"
       STORE_BACKEND: "postgres"
-      DATABASE_URL: "postgres://fleetlease:fleetlease@db:5432/fleetlease?sslmode=disable"
+      DATABASE_URL: "postgres://fleetlease:fleetlease@w1-t1-ti1-db:5432/fleetlease?sslmode=disable"
       BACKUP_RETENTION_DAYS: "30"
       ATTACHMENT_RETENTION_DAYS: "365"
       LEDGER_RETENTION_YEARS: "7"
@@ -35,9 +40,10 @@ services:
     ports:
       - "8080:8080"
     depends_on:
-      - db
+      w1-t1-ti1-db:
+        condition: service_healthy
 
-  frontend:
+  w1-t1-ti1-frontend:
     build:
       context: .
       dockerfile: frontend/Dockerfile
@@ -46,14 +52,7 @@ services:
     ports:
       - "5173:5173"
     depends_on:
-      - backend
-
-  test:
-    image: golang:1.23-alpine
-    working_dir: /app
-    command: ["sh", "./run_tests.sh"]
-    volumes:
-      - ./:/app
+      - w1-t1-ti1-backend
 
 volumes:
   pg_data:

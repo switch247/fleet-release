@@ -10,7 +10,6 @@ WORKDIR /app
 RUN apk add --no-cache postgresql-client
 COPY --from=builder /fleetlease-server /fleetlease-server
 COPY backend/migrations /app/migrations
-COPY run_tests.sh /app/run_tests.sh
-RUN chmod +x /app/run_tests.sh
+
 EXPOSE 8080
 CMD ["/fleetlease-server"]

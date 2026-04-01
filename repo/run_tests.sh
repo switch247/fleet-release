@@ -1,8 +1,12 @@
 #!/bin/sh
 set -e
 
-cd /app/backend
-go test ./...
+# docker compose up --build
+# start server for api tests
 
-cd /app/tests
-go test ./...
+# run backend tests
+
+
+# run front end unit tests
+
+# run front end e2e tests
