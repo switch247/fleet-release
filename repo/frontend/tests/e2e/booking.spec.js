@@ -1,6 +1,20 @@
 const { test, expect } = require('@playwright/test');
 const crypto = require('crypto');
 
+test('invalid login - wrong password', async ({ request }) => {
+  const login = await request.post('/api/v1/auth/login', {
+    data: { username: 'customer', password: 'wrongpassword' },
+  });
+  expect(login.status()).toBe(401);
+});
+
+test('invalid login - wrong username', async ({ request }) => {
+  const login = await request.post('/api/v1/auth/login', {
+    data: { username: 'nonexistent', password: 'Customer1234!' },
+  });
+  expect(login.status()).toBe(401);
+});
+
 test('booking to dispute PDF flow', async ({ request }) => {
   const login = await request.post('/api/v1/auth/login', {
     data: { username: 'customer', password: 'Customer1234!' },
