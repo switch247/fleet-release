@@ -71,3 +71,4 @@ vendor/
 /.tmp/.versions
 
 /.meta
+/.reports
