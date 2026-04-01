@@ -24,6 +24,9 @@ import (
 
 func main() {
 	cfg := config.Load()
+	if !cfg.DisableTLSEnforcement && (cfg.TLSCertFile == "" || cfg.TLSKeyFile == "") {
+		log.Fatal("TLS certificates required; set TLS_CERT_FILE and TLS_KEY_FILE or DISABLE_TLS_ENFORCEMENT=true for testing")
+	}
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	securityLogger, err := applogger.New()
 	if err != nil {

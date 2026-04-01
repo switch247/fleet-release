@@ -37,6 +37,7 @@ services:
       NOTIFICATION_RETRY_BACKOFF_SECONDS: "30"
       REQUIRE_ADMIN_MFA: "true"
       RETENTION_PURGE_INTERVAL_MINUTES: "1440"
+      DISABLE_TLS_ENFORCEMENT: "true"
     ports:
       - "8080:8080"
     depends_on:

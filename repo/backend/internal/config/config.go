@@ -29,6 +29,7 @@ type Config struct {
 	NotificationRetryBackoffS int
 	RetentionPurgeMinutes     int
 	RequireAdminMFA           bool
+	DisableTLSEnforcement     bool
 }
 
 func Load() Config {
@@ -55,6 +56,7 @@ func Load() Config {
 		NotificationRetryBackoffS: getEnvInt("NOTIFICATION_RETRY_BACKOFF_SECONDS", 30),
 		RetentionPurgeMinutes:     getEnvInt("RETENTION_PURGE_INTERVAL_MINUTES", 1440),
 		RequireAdminMFA:           getEnvBool("REQUIRE_ADMIN_MFA", true),
+		DisableTLSEnforcement:     getEnvBool("DISABLE_TLS_ENFORCEMENT", false),
 	}
 }
 

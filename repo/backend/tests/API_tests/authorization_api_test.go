@@ -90,3 +90,24 @@ func TestComplaintArbitrationRequiresCSAOrAdmin(t *testing.T) {
 		t.Fatalf("expected 403 got %d body=%s", arbRec.Code, arbRec.Body.String())
 	}
 }
+
+func TestNonCustomerCannotCreateBooking(t *testing.T) {
+	e := public.BuildSeededRouterForTests()
+	providerToken := loginToken(t, e, "provider", "Provider1234!")
+
+	bookingBody, _ := json.Marshal(map[string]interface{}{
+		"listingId": "11111111-1111-1111-1111-111111111111",
+		"startAt":   "2026-04-02T10:00:00Z",
+		"endAt":     "2026-04-03T10:00:00Z",
+		"odoStart":  1000.0,
+		"odoEnd":    1100.0,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/bookings", bytes.NewReader(bookingBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+providerToken)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 got %d body=%s", rec.Code, rec.Body.String())
+	}
+}

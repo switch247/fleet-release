@@ -31,6 +31,7 @@ Offline-first FleetLease suite with React frontend and Go (Echo) backend for boo
 - Trusted proxy model: forwarded client IP is only honored from `TRUSTED_PROXIES`.
 - Admin-sensitive actions enforce MFA when `REQUIRE_ADMIN_MFA=true`.
 - Transport control: HTTPS enforced for non-whitelisted CIDRs, local HTTP only for configured test IP ranges.
+- TLS enforcement: By default, the server requires TLS certificates (`TLS_CERT_FILE` and `TLS_KEY_FILE`). For local testing, set `DISABLE_TLS_ENFORCEMENT=true` to allow HTTP startup.
 - Docker/Playwright tests use the `172.16.0.0/12` CIDR so the containerized NAT source is allowlisted; production overrides should narrow this down.
 - The `RETENTION_PURGE_INTERVAL_MINUTES` env controls how often the backend cleans attachments (`ATTACHMENT_RETENTION_DAYS`) and ledger entries (`LEDGER_RETENTION_YEARS`); the purge job logs `retention_purge_completed`.
 

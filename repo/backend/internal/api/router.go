@@ -66,7 +66,7 @@ func NewRouter(cfg config.Config, st store.Repository, logger *slog.Logger, secu
 	secured.GET("/listings", h.Listings)
 	secured.GET("/bookings", h.Bookings)
 	secured.POST("/bookings/estimate", h.EstimateBooking)
-	secured.POST("/bookings", h.CreateBooking)
+	secured.POST("/bookings", h.CreateBooking, appmw.RequireRoles(models.RoleCustomer))
 	secured.POST("/coupons/redeem", h.RedeemCoupon)
 	secured.POST("/inspections", h.UpsertInspection)
 	secured.GET("/inspections", h.ListInspections)
