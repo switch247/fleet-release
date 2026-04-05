@@ -26,7 +26,8 @@ fi
 if [ -d /app/data/attachments ]; then
   tar -czf "/app/backups/attachments_${TS}.tar.gz" -C /app/data attachments
 fi
-find /app/backups -type f -mtime +30 -delete
+BACKUP_RETENTION_DAYS=${BACKUP_RETENTION_DAYS:-30}
+find /app/backups -type f -mtime +"$BACKUP_RETENTION_DAYS" -delete
 
 ATTACHMENT_RETENTION_DAYS=${ATTACHMENT_RETENTION_DAYS:-365}
 LEDGER_RETENTION_YEARS=${LEDGER_RETENTION_YEARS:-7}

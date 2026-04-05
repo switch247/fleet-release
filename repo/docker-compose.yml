@@ -22,7 +22,6 @@ services:
     environment:
       PORT: "8080"
       JWT_SECRET: "dev-secret-change-me"
-      AES256_KEY: "01234567890123456789012345678901"
       ADMIN_ALLOWLIST: "127.0.0.1/32,::1/128,172.16.0.0/12"
       TRUSTED_PROXIES: ""
       ALLOW_INSECURE_HTTP_CIDRS: "127.0.0.1/32,::1/128"
@@ -34,7 +33,7 @@ services:
       DB_USER: "fleetlease"
       DB_NAME: "fleetlease"
       DB_PASSWORD: "fleetlease"
-      DATABASE_URL: "postgres://fleetlease:fleetlease@w1-t1-ti1-db:5432/fleetlease?sslmode=disable"
+      DB_SSL_MODE: "disable"
       BACKUP_RETENTION_DAYS: "30"
       ATTACHMENT_RETENTION_DAYS: "365"
       LEDGER_RETENTION_YEARS: "7"
@@ -45,7 +44,7 @@ services:
       TLS_CERT_FILE: "/app/certs/server.crt"
       TLS_KEY_FILE: "/app/certs/server.key"
       DISABLE_TLS_ENFORCEMENT: "false"
-      APP_ENV: "dev"
+      APP_ENV: "development"
     ports:
       - "8080:8080"
     depends_on:

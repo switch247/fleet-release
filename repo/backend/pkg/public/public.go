@@ -54,6 +54,7 @@ func EstimateFare(input EstimateInput) services.EstimateResult {
 }
 
 func BuildSeededRouterForTests() *echo.Echo {
+	ensureTestRuntimeEnv()
 	cfg := config.Load()
 	cfg.AllowInsecureCIDR = []string{"127.0.0.1/32", "::1/128", "192.0.2.0/24"}
 	cfg.AdminAllowlistCIDR = []string{"127.0.0.1/32", "::1/128", "192.0.2.0/24"}
@@ -88,6 +89,7 @@ func BuildSeededRouterForTests() *echo.Echo {
 }
 
 func BuildHarnessForTests() *TestHarness {
+	ensureTestRuntimeEnv()
 	cfg := config.Load()
 	cfg.AllowInsecureCIDR = []string{"127.0.0.1/32", "::1/128", "192.0.2.0/24"}
 	cfg.AdminAllowlistCIDR = []string{"127.0.0.1/32", "::1/128", "192.0.2.0/24"}
@@ -136,6 +138,18 @@ func BuildHarnessForTests() *TestHarness {
 				Hash:        "invalid-hash",
 			})
 		},
+	}
+}
+
+func ensureTestRuntimeEnv() {
+	if strings.TrimSpace(os.Getenv("APP_ENV")) == "" {
+		_ = os.Setenv("APP_ENV", "development")
+	}
+	if strings.TrimSpace(os.Getenv("AES256_KEY")) == "" {
+		_ = os.Setenv("AES256_KEY", "0123456789abcdef0123456789abcdef")
+	}
+	if strings.TrimSpace(os.Getenv("DB_SSL_MODE")) == "" {
+		_ = os.Setenv("DB_SSL_MODE", "disable")
 	}
 }
 

@@ -23,7 +23,10 @@ Offline-first FleetLease suite with React frontend and Go (Echo) backend for boo
 - Login lockout after repeated failures.
 - Admin-sensitive routes can require MFA (`REQUIRE_ADMIN_MFA=true`).
 - HTTPS enforced by default (`TLS_CERT_FILE` + `TLS_KEY_FILE`).
-- `JWT_SECRET` and `DB_PASSWORD` required when `APP_ENV` is non-dev.
+- In non-development mode, `AES256_KEY` is mandatory and must be exactly 32 bytes.
+- In non-development mode, DB TLS defaults to secure mode (`sslmode=require`) when `DATABASE_URL` is not set.
+- `DB_SSL_MODE` can be used for DSN generation; insecure values are only valid in `APP_ENV=development`.
+- `JWT_SECRET` and `DB_PASSWORD` are required when `APP_ENV` is non-development.
 - Attachment checksum + MIME validation and booking-bound evidence validation.
 
 ## Start (Docker)
@@ -46,6 +49,7 @@ docker compose run --rm test
 - Backup script: `backend/scripts/backup.sh`
 - Restore script: `backend/scripts/restore.sh`
 - Scripts use `DATABASE_URL` when set; otherwise use `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_NAME`, and `DB_PASSWORD`.
+- Backup retention is controlled by `BACKUP_RETENTION_DAYS` (defaults to 30 only when unset).
 
 ## Documentation
 - Deployment hardening: `docs/Deployment_Hardening.md`

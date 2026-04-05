@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -37,44 +38,78 @@ type Config struct {
 }
 
 func Load() Config {
-	appEnv := strings.ToLower(strings.TrimSpace(os.Getenv("APP_ENV")))
-	if appEnv == "" {
-		appEnv = "dev"
+	cfg, err := loadFromEnv()
+	if err != nil {
+		log.Fatal(err)
 	}
-	isDev := appEnv == "dev" || appEnv == "development"
+	return cfg
+}
+
+func loadFromEnv() (Config, error) {
+	appEnv := strings.ToLower(strings.TrimSpace(os.Getenv("APP_ENV")))
+	isDevelopment := appEnv == "development"
 
 	jwtSecret := strings.TrimSpace(os.Getenv("JWT_SECRET"))
 	dbPassword := strings.TrimSpace(os.Getenv("DB_PASSWORD"))
+	encryptionKey := strings.TrimSpace(os.Getenv("AES256_KEY"))
+	dbSSLMode := strings.ToLower(strings.TrimSpace(os.Getenv("DB_SSL_MODE")))
 
-	if jwtSecret == "" {
-		if isDev {
-			jwtSecret = randomSecret()
+	if dbSSLMode == "" {
+		if isDevelopment {
+			dbSSLMode = "disable"
 		} else {
-			log.Fatalf("JWT_SECRET is required when APP_ENV=%s", appEnv)
+			dbSSLMode = "require"
 		}
 	}
 
-	if dbPassword == "" && !isDev {
-		log.Fatalf("DB_PASSWORD is required when APP_ENV=%s", appEnv)
+	if jwtSecret == "" {
+		if isDevelopment {
+			jwtSecret = randomSecret()
+		} else {
+			return Config{}, fmt.Errorf("JWT_SECRET is required when APP_ENV=%s", envLabel(appEnv))
+		}
+	}
+
+	if encryptionKey == "" {
+		if isDevelopment {
+			encryptionKey = randomAES256Key()
+		} else {
+			return Config{}, fmt.Errorf("AES256_KEY is required when APP_ENV=%s", envLabel(appEnv))
+		}
+	}
+	if len([]byte(encryptionKey)) != 32 {
+		return Config{}, fmt.Errorf("AES256_KEY must be exactly 32 bytes")
+	}
+
+	if dbPassword == "" && !isDevelopment {
+		return Config{}, fmt.Errorf("DB_PASSWORD is required when APP_ENV=%s", envLabel(appEnv))
 	}
 
 	databaseURL := strings.TrimSpace(os.Getenv("DATABASE_URL"))
 	if databaseURL == "" {
 		if dbPassword == "" {
-			if isDev {
+			if isDevelopment {
 				dbPassword = "fleetlease"
 			} else {
-				log.Fatal("DB_PASSWORD must be provided when DATABASE_URL is not set")
+				return Config{}, fmt.Errorf("DB_PASSWORD must be provided when DATABASE_URL is not set")
 			}
 		}
+
+		if !isDevelopment && !isSecureDBSSLMode(dbSSLMode) {
+			return Config{}, fmt.Errorf("DB_SSL_MODE=%s is not allowed when APP_ENV=%s", dbSSLMode, envLabel(appEnv))
+		}
+
 		databaseURL = fmt.Sprintf(
-			"postgres://%s:%s@%s:%s/%s?sslmode=disable",
+			"postgres://%s:%s@%s:%s/%s?sslmode=%s",
 			getEnv("DB_USER", "fleetlease"),
 			dbPassword,
 			getEnv("DB_HOST", "db"),
 			getEnv("DB_PORT", "5432"),
 			getEnv("DB_NAME", "fleetlease"),
+			url.QueryEscape(dbSSLMode),
 		)
+	} else if !isDevelopment && strings.Contains(strings.ToLower(databaseURL), "sslmode=disable") {
+		return Config{}, fmt.Errorf("DATABASE_URL cannot use sslmode=disable when APP_ENV=%s", envLabel(appEnv))
 	}
 
 	return Config{
@@ -85,7 +120,7 @@ func Load() Config {
 		AbsoluteTimeout:           time.Duration(getEnvInt("JWT_ABSOLUTE_HOURS", 12)) * time.Hour,
 		AdminAllowlistCIDR:        splitCSV(getEnv("ADMIN_ALLOWLIST", "127.0.0.1/32,::1/128")),
 		TrustedProxiesCIDR:        splitCSV(getEnv("TRUSTED_PROXIES", "")),
-		EncryptionKey:             getEnv("AES256_KEY", "01234567890123456789012345678901"),
+		EncryptionKey:             encryptionKey,
 		AttachmentDir:             getEnv("ATTACHMENT_DIR", "./data/attachments"),
 		DatabaseURL:               databaseURL,
 		StoreBackend:              strings.ToLower(getEnv("STORE_BACKEND", "postgres")),
@@ -100,7 +135,7 @@ func Load() Config {
 		RetentionPurgeMinutes:     getEnvInt("RETENTION_PURGE_INTERVAL_MINUTES", 1440),
 		RequireAdminMFA:           getEnvBool("REQUIRE_ADMIN_MFA", true),
 		DisableTLSEnforcement:     getEnvBool("DISABLE_TLS_ENFORCEMENT", false),
-	}
+	}, nil
 }
 
 func randomSecret() string {
@@ -110,6 +145,30 @@ func randomSecret() string {
 		return fmt.Sprintf("dev-secret-%d", time.Now().UnixNano())
 	}
 	return hex.EncodeToString(buf)
+}
+
+func randomAES256Key() string {
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		return fmt.Sprintf("%032x", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(buf)
+}
+
+func isSecureDBSSLMode(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "require", "verify-ca", "verify-full":
+		return true
+	default:
+		return false
+	}
+}
+
+func envLabel(appEnv string) string {
+	if strings.TrimSpace(appEnv) == "" {
+		return "<unset>"
+	}
+	return appEnv
 }
 
 func getEnv(key, fallback string) string {

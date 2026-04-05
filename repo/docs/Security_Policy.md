@@ -9,6 +9,7 @@
 - HTTPS is required by default.
 - TLS certificate and key must be configured through `TLS_CERT_FILE` and `TLS_KEY_FILE`.
 - HTTP is only allowed for explicitly configured allowlisted CIDRs.
+- Database TLS must be enabled outside development (`DB_SSL_MODE=require` or stronger).
 
 ## Data Integrity
 - Inspection evidence IDs must exist, belong to the booking under inspection, and pass checksum validation.
@@ -17,4 +18,5 @@
 
 ## Secrets
 - `JWT_SECRET` and `DB_PASSWORD` are mandatory in non-dev environments.
+- `AES256_KEY` is mandatory in non-dev environments and must be exactly 32 bytes.
 - No hardcoded production secrets are allowed.

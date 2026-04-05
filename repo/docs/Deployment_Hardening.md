@@ -2,8 +2,10 @@
 
 ## Required Environment
 - `APP_ENV=production`
+- `AES256_KEY` (must be exactly 32 bytes)
 - `JWT_SECRET`
 - `DB_PASSWORD` (or `DATABASE_URL` containing credentials)
+- `DB_SSL_MODE=require` or `DB_SSL_MODE=verify-full` when generating DSN from DB_* values
 - `TLS_CERT_FILE`
 - `TLS_KEY_FILE`
 
