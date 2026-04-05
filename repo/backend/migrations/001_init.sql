@@ -127,7 +127,8 @@ CREATE TABLE IF NOT EXISTS complaints (
 
 CREATE TABLE IF NOT EXISTS consultation_versions (
   id UUID PRIMARY KEY,
-  consultation_key TEXT NOT NULL,
+  consultation_thread_id TEXT NOT NULL,
+  consultation_key TEXT,
   booking_id UUID REFERENCES bookings(id),
   version INT NOT NULL,
   topic TEXT NOT NULL,
@@ -140,6 +141,11 @@ CREATE TABLE IF NOT EXISTS consultation_versions (
   change_reason TEXT
 );
 
+ALTER TABLE consultation_versions ADD COLUMN IF NOT EXISTS consultation_thread_id TEXT;
+UPDATE consultation_versions
+SET consultation_thread_id = COALESCE(consultation_thread_id, consultation_key, COALESCE(booking_id::text, '') || '::' || topic)
+WHERE consultation_thread_id IS NULL OR consultation_thread_id = '';
+CREATE UNIQUE INDEX IF NOT EXISTS consultation_thread_version_idx ON consultation_versions (consultation_thread_id, version);
 CREATE TABLE IF NOT EXISTS notifications (
   id UUID PRIMARY KEY,
   user_id UUID NOT NULL REFERENCES users(id),
@@ -222,3 +228,5 @@ CREATE TABLE IF NOT EXISTS password_reset_evidence (
   reason TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+

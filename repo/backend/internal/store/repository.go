@@ -52,6 +52,7 @@ type Repository interface {
 	SaveConsultation(c models.Consultation)
 	GetConsultation(id string) (models.Consultation, bool)
 	ListConsultationsByBooking(bookingID string) []models.Consultation
+	ListConsultationsByThread(threadID string) []models.Consultation
 	ListConsultationsByTopic(topic string) []models.Consultation
 	SaveConsultationAttachment(a models.ConsultationAttachment)
 	ListConsultationAttachments(consultationID string) []models.ConsultationAttachment

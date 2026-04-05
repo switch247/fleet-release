@@ -121,7 +121,8 @@ func (h *Handler) CreateConsultation(c echo.Context) error {
 	default:
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid visibility"})
 	}
-	versions := h.Store.ListConsultationsByTopic(req.Topic)
+	threadID := req.BookingID + "::" + req.Topic
+	versions := h.Store.ListConsultationsByThread(threadID)
 	nextVersion := len(versions) + 1
 	item := models.Consultation{
 		ID:             uuid.NewString(),

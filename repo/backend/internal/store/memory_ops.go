@@ -301,7 +301,8 @@ func (s *MemoryStore) ListComplaints() []models.Complaint {
 func (s *MemoryStore) SaveConsultation(c models.Consultation) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.Consultations[c.Topic] = append(s.Consultations[c.Topic], c)
+	threadID := consultationThreadID(c.BookingID, c.Topic)
+	s.Consultations[threadID] = append(s.Consultations[threadID], c)
 	s.ConsultByID[c.ID] = c
 }
 
@@ -326,6 +327,11 @@ func (s *MemoryStore) ListConsultationsByBooking(bookingID string) []models.Cons
 	return out
 }
 
+func (s *MemoryStore) ListConsultationsByThread(threadID string) []models.Consultation {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return append([]models.Consultation{}, s.Consultations[threadID]...)
+}
 func (s *MemoryStore) ListConsultationsByTopic(topic string) []models.Consultation {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -469,4 +475,8 @@ func (s *MemoryStore) MarkCouponUsed(code, bookingID string) bool {
 	}
 	s.CouponsUsed[code] = bookingID
 	return true
+}
+
+func consultationThreadID(bookingID, topic string) string {
+	return bookingID + "::" + topic
 }

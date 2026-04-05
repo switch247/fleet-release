@@ -61,7 +61,11 @@ func Load() Config {
 	databaseURL := strings.TrimSpace(os.Getenv("DATABASE_URL"))
 	if databaseURL == "" {
 		if dbPassword == "" {
-			log.Fatal("DB_PASSWORD must be provided when DATABASE_URL is not set")
+			if isDev {
+				dbPassword = "fleetlease"
+			} else {
+				log.Fatal("DB_PASSWORD must be provided when DATABASE_URL is not set")
+			}
 		}
 		databaseURL = fmt.Sprintf(
 			"postgres://%s:%s@%s:%s/%s?sslmode=disable",

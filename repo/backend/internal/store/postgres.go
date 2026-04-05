@@ -475,11 +475,8 @@ func (s *PostgresStore) ListComplaints() []models.Complaint {
 
 func (s *PostgresStore) SaveConsultation(c models.Consultation) {
 	ctx := context.Background()
-	consultationKey := c.ID
-	if c.Topic != "" {
-		consultationKey = c.Topic
-	}
-	_, _ = s.pool.Exec(ctx, `INSERT INTO consultation_versions (id,consultation_key,booking_id,version,topic,key_points,recommendation,follow_up,visibility,created_by,created_at,change_reason) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+	consultationKey := consultationThreadID(c.BookingID, c.Topic)
+	_, _ = s.pool.Exec(ctx, `INSERT INTO consultation_versions (id,consultation_thread_id,booking_id,version,topic,key_points,recommendation,follow_up,visibility,created_by,created_at,change_reason) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
 		c.ID, consultationKey, c.BookingID, c.Version, c.Topic, c.KeyPoints, c.Recommendation, c.FollowUp, c.Visibility, c.CreatedBy, c.CreatedAt, c.ChangeReason,
 	)
 }
@@ -512,6 +509,22 @@ func (s *PostgresStore) ListConsultationsByBooking(bookingID string) []models.Co
 	return out
 }
 
+func (s *PostgresStore) ListConsultationsByThread(threadID string) []models.Consultation {
+	ctx := context.Background()
+	rows, err := s.pool.Query(ctx, `SELECT id,COALESCE(booking_id::text,''),topic,key_points,recommendation,follow_up,COALESCE(visibility,'csa_admin'),COALESCE(change_reason,''),version,created_by,created_at FROM consultation_versions WHERE consultation_thread_id=$1 ORDER BY version ASC`, threadID)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	out := make([]models.Consultation, 0)
+	for rows.Next() {
+		var c models.Consultation
+		if rows.Scan(&c.ID, &c.BookingID, &c.Topic, &c.KeyPoints, &c.Recommendation, &c.FollowUp, &c.Visibility, &c.ChangeReason, &c.Version, &c.CreatedBy, &c.CreatedAt) == nil {
+			out = append(out, c)
+		}
+	}
+	return out
+}
 func (s *PostgresStore) ListConsultationsByTopic(topic string) []models.Consultation {
 	ctx := context.Background()
 	rows, err := s.pool.Query(ctx, `SELECT id,COALESCE(booking_id::text,''),topic,key_points,recommendation,follow_up,COALESCE(visibility,'csa_admin'),COALESCE(change_reason,''),version,created_by,created_at FROM consultation_versions WHERE topic=$1 ORDER BY version ASC`, topic)

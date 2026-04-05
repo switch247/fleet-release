@@ -49,7 +49,7 @@ test('booking to dispute PDF flow', async ({ request }) => {
   const booking = await bookingRes.json();
   const bookingId = booking.booking.id;
 
-  const payload = Buffer.from('playwright-evidence');
+  const payload = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8Xw8AAoMBgR5nYeEAAAAASUVORK5CYII=', 'base64');
   const checksum = crypto.createHash('sha256').update(payload).digest('hex');
   const init = await request.post('/api/v1/attachments/chunk/init', {
     headers,
@@ -104,3 +104,4 @@ test('booking to dispute PDF flow', async ({ request }) => {
   expect(pdf.status()).toBe(200);
   expect(pdf.headers()['content-type']).toContain('application/pdf');
 });
+

@@ -21,6 +21,21 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+var allowedAttachmentMIMEs = map[string][]string{
+	"photo": {
+		"image/jpeg",
+		"image/png",
+		"image/webp",
+		"image/gif",
+	},
+	"video": {
+		"video/mp4",
+		"video/webm",
+		"video/ogg",
+		"video/quicktime",
+	},
+}
+
 func (h *Handler) UpsertInspection(c echo.Context) error {
 	var req struct {
 		BookingID string                  `json:"bookingId"`
@@ -48,6 +63,9 @@ func (h *Handler) UpsertInspection(c echo.Context) error {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "camera evidence required per checklist item"})
 		}
 	}
+	if err := h.validateInspectionEvidence(req.BookingID, req.Items); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
 	prevHash := ""
 	revisions := h.Store.ListInspections(req.BookingID)
 	if len(revisions) > 0 {
@@ -61,6 +79,40 @@ func (h *Handler) UpsertInspection(c echo.Context) error {
 	return c.JSON(http.StatusCreated, rev)
 }
 
+func (h *Handler) validateInspectionEvidence(bookingID string, items []models.InspectionItem) error {
+	checked := map[string]struct{}{}
+	for _, item := range items {
+		for _, evidenceID := range item.EvidenceIDs {
+			if _, seen := checked[evidenceID]; seen {
+				continue
+			}
+			checked[evidenceID] = struct{}{}
+
+			attachment, ok := h.Store.GetAttachment(evidenceID)
+			if !ok {
+				return fmt.Errorf("invalid evidenceId: %s", evidenceID)
+			}
+			if attachment.BookingID != bookingID {
+				return fmt.Errorf("evidenceId belongs to another booking: %s", evidenceID)
+			}
+			if strings.TrimSpace(attachment.Checksum) == "" {
+				return fmt.Errorf("evidenceId missing checksum: %s", evidenceID)
+			}
+
+			fileBytes, err := os.ReadFile(attachment.Path)
+			if err != nil {
+				return fmt.Errorf("evidenceId file missing or unreadable: %s", evidenceID)
+			}
+			sum := sha256.Sum256(fileBytes)
+			computed := hex.EncodeToString(sum[:])
+			if !strings.EqualFold(attachment.Checksum, computed) {
+				return fmt.Errorf("evidenceId checksum mismatch: %s", evidenceID)
+			}
+		}
+	}
+	return nil
+}
+
 func (h *Handler) AttachmentInit(c echo.Context) error {
 	var req struct {
 		BookingID   string `json:"bookingId"`
@@ -71,6 +123,9 @@ func (h *Handler) AttachmentInit(c echo.Context) error {
 	}
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid payload"})
+	}
+	if _, ok := allowedAttachmentMIMEs[req.Type]; !ok {
+		return c.JSON(http.StatusUnsupportedMediaType, map[string]string{"error": "unsupported attachment type"})
 	}
 	booking, ok := h.Store.GetBooking(req.BookingID)
 	if !ok {
@@ -166,6 +221,10 @@ func (h *Handler) AttachmentComplete(c echo.Context) error {
 	if att.Checksum != "" && !strings.EqualFold(att.Checksum, computed) {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "checksum mismatch"})
 	}
+	contentType := http.DetectContentType(bytes)
+	if !isAllowedAttachmentMime(att.Type, contentType) {
+		return c.JSON(http.StatusUnsupportedMediaType, map[string]string{"error": "unsupported attachment mime type"})
+	}
 	finalPath := filepath.Join(h.Cfg.AttachmentDir, req.UploadID)
 	if err = os.Rename(att.Path, finalPath); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to finalize upload"})
@@ -173,6 +232,19 @@ func (h *Handler) AttachmentComplete(c echo.Context) error {
 	att.Path = finalPath
 	h.Store.SaveAttachment(att)
 	return c.JSON(http.StatusOK, map[string]string{"status": "upload complete"})
+}
+
+func isAllowedAttachmentMime(kind, mime string) bool {
+	allowed, ok := allowedAttachmentMIMEs[kind]
+	if !ok {
+		return false
+	}
+	for _, item := range allowed {
+		if strings.EqualFold(item, mime) {
+			return true
+		}
+	}
+	return false
 }
 
 func (h *Handler) VerifyInspection(c echo.Context) error {
@@ -256,11 +328,9 @@ func (h *Handler) ListInspections(c echo.Context) error {
 	actor, _ := c.Get("userID").(string)
 	roles, _ := c.Get("roles").([]models.Role)
 
-	// If booking doesn't exist, return 404 (booking not found)
 	if !ok {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "booking not found"})
 	}
-
 	if !canAccessBooking(actor, roles, booking) {
 		return c.JSON(http.StatusForbidden, map[string]string{"error": "forbidden"})
 	}
@@ -272,10 +342,8 @@ func (h *Handler) ListInspections(c echo.Context) error {
 	return c.JSON(http.StatusOK, revisions)
 }
 
-// AttachmentPresign returns a temporary signed URL for previewing an attachment.
 func (h *Handler) AttachmentPresign(c echo.Context) error {
 	id := c.Param("id")
-	// require authenticated user and access to booking
 	attachment, ok := h.Store.GetAttachment(id)
 	if !ok {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "attachment not found"})
@@ -291,7 +359,6 @@ func (h *Handler) AttachmentPresign(c echo.Context) error {
 			return c.JSON(http.StatusForbidden, map[string]string{"error": "forbidden"})
 		}
 	}
-	// optional ttl in body
 	var req struct {
 		TTLSeconds int `json:"ttlSeconds"`
 	}
@@ -305,7 +372,6 @@ func (h *Handler) AttachmentPresign(c echo.Context) error {
 	mac := hmac.New(sha256.New, []byte(h.Cfg.AttachmentSigningSecret))
 	mac.Write([]byte(msg))
 	sig := hex.EncodeToString(mac.Sum(nil))
-	// Build fully-qualified URL using request scheme+host so frontend can open it directly.
 	scheme := "http"
 	if c.Request().TLS != nil {
 		scheme = "https"
@@ -317,7 +383,6 @@ func (h *Handler) AttachmentPresign(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]string{"url": url})
 }
 
-// AttachmentServe serves an attachment file when presented with a valid signature and expiry.
 func (h *Handler) AttachmentServe(c echo.Context) error {
 	id := c.Param("id")
 	expStr := c.QueryParam("exp")
@@ -343,7 +408,6 @@ func (h *Handler) AttachmentServe(c echo.Context) error {
 	if !ok {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "attachment not found"})
 	}
-	// read file and detect content-type
 	bytes, err := os.ReadFile(att.Path)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to read file"})
@@ -352,7 +416,6 @@ func (h *Handler) AttachmentServe(c echo.Context) error {
 	if len(bytes) > 0 {
 		contentType = http.DetectContentType(bytes[:512])
 	}
-	// set inline disposition so browser renders images/videos directly
 	c.Response().Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", id))
 	c.Response().Header().Set("Cache-Control", "private, max-age=60")
 	return c.Blob(http.StatusOK, contentType, bytes)

@@ -17,13 +17,14 @@ import (
 func TestPresignAndServe(t *testing.T) {
 	h := public.BuildHarnessForTests()
 	token := loginToken(t, h.Router, "customer", "Customer1234!")
+	pngBytes, _ := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8Xw8AAoMBgR5nYeEAAAAASUVORK5CYII=")
 
 	// Init
 	initBody, _ := json.Marshal(map[string]interface{}{
 		"bookingId":   h.BookingID,
 		"type":        "photo",
-		"sizeBytes":   5,
-		"checksum":    "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+		"sizeBytes":   len(pngBytes),
+		"checksum":    "",
 		"fingerprint": "fp-presign",
 	})
 	initReq := httptest.NewRequest(http.MethodPost, "/api/v1/attachments/chunk/init", bytes.NewReader(initBody))
@@ -40,7 +41,7 @@ func TestPresignAndServe(t *testing.T) {
 	_ = json.Unmarshal(initRec.Body.Bytes(), &initResp)
 
 	// Upload chunk
-	chunkPayload := base64.StdEncoding.EncodeToString([]byte("hello"))
+	chunkPayload := base64.StdEncoding.EncodeToString(pngBytes)
 	chunkBody, _ := json.Marshal(map[string]string{"uploadId": initResp.UploadID, "chunkBase64": chunkPayload})
 	chunkReq := httptest.NewRequest(http.MethodPost, "/api/v1/attachments/chunk/upload", bytes.NewReader(chunkBody))
 	chunkReq.Header.Set("Content-Type", "application/json")
@@ -96,7 +97,7 @@ func TestPresignAndServe(t *testing.T) {
 	if cd == "" {
 		t.Fatalf("missing Content-Disposition header")
 	}
-	if serveRec.Body.String() != "hello" {
-		t.Fatalf("unexpected body: %s", serveRec.Body.String())
+	if !bytes.Equal(serveRec.Body.Bytes(), pngBytes) {
+		t.Fatalf("unexpected body bytes length=%d", len(serveRec.Body.Bytes()))
 	}
 }

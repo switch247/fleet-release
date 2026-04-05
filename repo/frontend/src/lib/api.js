@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8080/api/v1';
+const API_BASE = import.meta.env.VITE_API_BASE || 'https://localhost:8080/api/v1';
 
 function buildHeaders(extra = {}) {
   const token = localStorage.getItem('token');
@@ -69,7 +69,7 @@ export const updateMe = (payload) => api('/auth/me', { method: 'PATCH', body: JS
 export const loginHistory = () => api('/auth/login-history');
 export const statsSummary = () => api('/stats/summary');
 export const listings = () => api('/listings');
-export const categories = () => api('/categories');
+export const categories = (view = '') => api(`/categories${view ? `?view=${encodeURIComponent(view)}` : ''}`);
 export const bookings = () => api('/bookings');
 export const estimateBooking = (payload) => api('/bookings/estimate', { method: 'POST', body: JSON.stringify(payload) });
 export const createBooking = (payload) => api('/bookings', { method: 'POST', body: JSON.stringify(payload) });
@@ -166,3 +166,4 @@ export const createConsultation = (payload) => api('/consultations', { method: '
 export const consultationAttachments = (id) => api(`/consultations/${id}/attachments`);
 export const addConsultationAttachment = (payload) => api('/consultations/attachments', { method: 'POST', body: JSON.stringify(payload) });
 export const presignAttachment = (id, ttlSeconds = 60) => api(`/attachments/${id}/presign`, { method: 'POST', body: JSON.stringify({ ttlSeconds }) });
+

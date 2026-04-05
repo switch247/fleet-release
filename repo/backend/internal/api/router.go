@@ -21,7 +21,7 @@ func NewRouter(cfg config.Config, st store.Repository, logger *slog.Logger, secu
 	e.Use(echoMW.Recover())
 	e.Use(echoMW.Logger())
 	e.Use(echoMW.CORSWithConfig(echoMW.CORSConfig{
-		AllowOrigins:     []string{"http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:4173", "http://127.0.0.1:4173"},
+		AllowOrigins:     []string{"http://localhost:5173", "http://127.0.0.1:5173", "https://localhost:5173", "https://127.0.0.1:5173", "http://localhost:4173", "http://127.0.0.1:4173", "https://localhost:4173", "https://127.0.0.1:4173"},
 		AllowMethods:     []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodOptions},
 		AllowHeaders:     []string{"Content-Type", "Authorization", "Accept"},
 		AllowCredentials: true,

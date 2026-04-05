@@ -25,10 +25,14 @@ services:
       AES256_KEY: "01234567890123456789012345678901"
       ADMIN_ALLOWLIST: "127.0.0.1/32,::1/128,172.16.0.0/12"
       TRUSTED_PROXIES: ""
-      ALLOW_INSECURE_HTTP_CIDRS: "127.0.0.1/32,::1/128,172.16.0.0/12"
+      ALLOW_INSECURE_HTTP_CIDRS: "127.0.0.1/32,::1/128"
       ATTACHMENT_DIR: "/app/data/attachments"
       ATTACHMENT_SIGNING_SECRET: "dev-secret-change-me"
       STORE_BACKEND: "postgres"
+      DB_HOST: "w1-t1-ti1-db"
+      DB_PORT: "5432"
+      DB_USER: "fleetlease"
+      DB_NAME: "fleetlease"
       DB_PASSWORD: "fleetlease"
       DATABASE_URL: "postgres://fleetlease:fleetlease@w1-t1-ti1-db:5432/fleetlease?sslmode=disable"
       BACKUP_RETENTION_DAYS: "30"
@@ -38,7 +42,10 @@ services:
       NOTIFICATION_RETRY_BACKOFF_SECONDS: "30"
       REQUIRE_ADMIN_MFA: "true"
       RETENTION_PURGE_INTERVAL_MINUTES: "1440"
-      DISABLE_TLS_ENFORCEMENT: "true"
+      TLS_CERT_FILE: "/app/certs/server.crt"
+      TLS_KEY_FILE: "/app/certs/server.key"
+      DISABLE_TLS_ENFORCEMENT: "false"
+      APP_ENV: "dev"
     ports:
       - "8080:8080"
     depends_on:
@@ -49,9 +56,10 @@ services:
     build:
       context: .
       dockerfile: frontend/Dockerfile
+    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"]
     environment:
-      VITE_API_BASE: "http://localhost:8080/api/v1"
-      API_BASE_URL: "http://w1-t1-ti1-backend:8080"
+      VITE_API_BASE: "https://localhost:8080/api/v1"
+      API_BASE_URL: "https://w1-t1-ti1-backend:8080"
     ports:
       - "5173:5173"
     depends_on:
@@ -59,3 +67,4 @@ services:
 
 volumes:
   pg_data:
+

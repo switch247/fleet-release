@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { login as apiLogin, logout as apiLogout, revokeToken, me } from '../lib/api';
 
-const IDLE_LIMIT_MS = 25 * 60 * 1000;
+const IDLE_LIMIT_MS = 30 * 60 * 1000;
 const WARNING_MS = 2 * 60 * 1000;
 
 const AuthContext = createContext(null);
@@ -117,3 +117,4 @@ export function AuthProvider({ children }) {
 export function useAuth() {
   return useContext(AuthContext);
 }
+

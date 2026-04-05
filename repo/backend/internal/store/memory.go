@@ -57,3 +57,4 @@ func NewMemoryStore() *MemoryStore {
 		RetentionReports: map[string]models.RetentionReport{},
 	}
 }
+
