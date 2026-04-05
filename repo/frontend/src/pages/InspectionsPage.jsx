@@ -1,4 +1,4 @@
-﻿import React, { useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   attachmentChunk,
@@ -22,6 +22,8 @@ const BASE_ITEMS = [
   { key: 'fuel', name: 'Fuel and fluids' },
 ];
 
+const formatCurrency = (value) => `$${Number(value || 0).toFixed(2)}`;
+
 function toHex(buffer) {
   return Array.from(new Uint8Array(buffer)).map((b) => b.toString(16).padStart(2, '0')).join('');
 }
@@ -39,8 +41,15 @@ export default function InspectionsPage() {
   const [notes, setNotes] = useState('');
   const [items, setItems] = useState(() => BASE_ITEMS.map((item) => ({ ...item, condition: 'good', file: null })));
   const [settlement, setSettlement] = useState(null);
+  const [settlementAcknowledged, setSettlementAcknowledged] = useState(false);
   const [status, setStatus] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
+
+  useEffect(() => {
+    setSettlement(null);
+    setSettlementAcknowledged(false);
+  }, [bookingID]);
+
   const [step, setStep] = useState(1); // 1=setup,2=checklist,3=review
 
   const submitMutation = useMutation({
@@ -74,7 +83,13 @@ export default function InspectionsPage() {
 
   const settleMutation = useMutation({
     mutationFn: () => closeSettlement(bookingID),
-    onSuccess: (data) => setSettlement(data),
+    onSuccess: (data) => {
+      setSettlement({
+        booking: data.booking,
+        entries: Array.isArray(data.ledger) ? data.ledger : [],
+      });
+      setSettlementAcknowledged(false);
+    },
     onError: (error) => setStatus(error.message),
   });
 
@@ -84,6 +99,22 @@ export default function InspectionsPage() {
     const total = list.reduce((sum, entry) => sum + entry.deduction, 0);
     return { list, total };
   }, [items]);
+
+  const ledgerSummary = useMemo(() => {
+    if (!settlement) return null;
+    const entries = settlement.entries || [];
+    const chargeEntry = entries.find((entry) => entry.type === 'trip_charge');
+    const depositEntry = entries.find((entry) => entry.type?.startsWith('deposit'));
+    const depositAmount = depositEntry?.amount ?? 0;
+    const depositLabel = depositAmount < 0 ? 'Deposit Deduction' : 'Deposit Refund';
+    return {
+      entries,
+      totalCharges: chargeEntry?.amount ?? 0,
+      adjustments: deductions.total,
+      depositAmount,
+      depositLabel,
+    };
+  }, [settlement, deductions.total]);
 
   const inspectionsQuery = useQuery({
     queryKey: ['inspections', bookingID],
@@ -171,7 +202,7 @@ export default function InspectionsPage() {
         <Card>
           <CardTitle>Close Settlement</CardTitle>
           <p className="text-sm text-slate-400 mt-2">Finalize the trip with charge adjustments and deposit refund/deduction.</p>
-          <Button className="mt-3" onClick={() => settleMutation.mutate()}>Settle Trip</Button>
+          <Button className="mt-3" onClick={() => settleMutation.mutate()} disabled={settleMutation.isPending}>Settle Trip</Button>
         </Card>
       )}
 
@@ -240,18 +271,44 @@ export default function InspectionsPage() {
 
       {settlement && (
         <Card>
-          <CardTitle>Settlement Summary</CardTitle>
-          <div className="mt-2 space-y-2">
-            {settlement.entries.map((entry, i) => (
-              <div key={i} className="flex justify-between text-sm">
-                <span>{entry.description}</span>
-                <span>${entry.amount.toFixed(2)}</span>
+          <CardTitle>Settlement Ledger Statement</CardTitle>
+          <div className="mt-2 space-y-4">
+            <div className="space-y-1 text-sm text-slate-200">
+              <div className="flex justify-between">
+                <span>Total Charges</span>
+                <span>{formatCurrency(ledgerSummary?.totalCharges)}</span>
               </div>
-            ))}
-            <div className="border-t border-slate-800 pt-2 flex justify-between font-semibold">
-              <span>Total</span>
-              <span>${settlement.entries.reduce((sum, e) => sum + e.amount, 0).toFixed(2)}</span>
+              <div className="flex justify-between">
+                <span>Adjustments/Fines</span>
+                <span>{formatCurrency(ledgerSummary?.adjustments)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>{ledgerSummary?.depositLabel || 'Deposit'}</span>
+                <span>{formatCurrency(ledgerSummary?.depositAmount)}</span>
+              </div>
             </div>
+            <div className="space-y-2">
+              {(ledgerSummary?.entries || []).map((entry, i) => (
+                <div key={entry.id || i} className="flex justify-between text-sm">
+                  <span>{entry.description}</span>
+                  <span>{formatCurrency(entry.amount)}</span>
+                </div>
+              ))}
+              <div className="border-t border-slate-800 pt-2 flex justify-between font-semibold">
+                <span>Total</span>
+                <span>{formatCurrency((ledgerSummary?.entries || []).reduce((sum, entry) => sum + entry.amount, 0))}</span>
+              </div>
+            </div>
+            <p className="text-xs text-slate-400">
+              Trip is only considered closed after viewing and acknowledging this settlement summary.
+            </p>
+            <Button
+              variant={settlementAcknowledged ? 'outline' : 'secondary'}
+              onClick={() => setSettlementAcknowledged(true)}
+              disabled={settlementAcknowledged}
+            >
+              {settlementAcknowledged ? 'Settlement statement acknowledged' : 'Mark ledger reviewed'}
+            </Button>
           </div>
         </Card>
       )}

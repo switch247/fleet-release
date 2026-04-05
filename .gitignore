@@ -69,6 +69,7 @@ vendor/
 (# Misc)
 .DS_Store
 /.tmp/.versions
+/.tmp/
 
 /.meta
 /.reports

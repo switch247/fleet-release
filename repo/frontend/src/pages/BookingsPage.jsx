@@ -135,9 +135,9 @@ export default function BookingsPage() {
         footer={(
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={submitBooking} disabled={!isValid || createMutation.isPending}>Create Booking</Button>
-        </div>
-      )}
+            <Button onClick={submitBooking} disabled={!isValid || !estimatePreview || createMutation.isPending}>Create Booking</Button>
+          </div>
+        )}
     >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div className="md:col-span-2">

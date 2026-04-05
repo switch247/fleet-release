@@ -29,6 +29,7 @@ services:
       ATTACHMENT_DIR: "/app/data/attachments"
       ATTACHMENT_SIGNING_SECRET: "dev-secret-change-me"
       STORE_BACKEND: "postgres"
+      DB_PASSWORD: "fleetlease"
       DATABASE_URL: "postgres://fleetlease:fleetlease@w1-t1-ti1-db:5432/fleetlease?sslmode=disable"
       BACKUP_RETENTION_DAYS: "30"
       ATTACHMENT_RETENTION_DAYS: "365"

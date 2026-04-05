@@ -18,6 +18,16 @@ import DataTable from '../components/ui/DataTable';
 import Badge from '../components/ui/Badge';
 import { useAuth } from '../auth/AuthProvider';
 
+const createEmptyForm = () => ({
+  bookingId: '',
+  topic: '',
+  keyPoints: '',
+  recommendation: '',
+  followUp: '',
+  visibility: 'parties',
+  changeReason: '',
+});
+
 export default function ConsultationsPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -33,7 +43,7 @@ export default function ConsultationsPage() {
     queryFn: () => consultationsForUser(),
   });
 
-  const [form, setForm] = useState({ topic: '', keyPoints: '', recommendation: '', followUp: '', visibility: 'parties', changeReason: '' });
+  const [form, setForm] = useState(createEmptyForm());
   const [selectedFile, setSelectedFile] = useState(null);
 
   const attachmentListQuery = useQuery({
@@ -47,6 +57,7 @@ export default function ConsultationsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['consultations'] });
       setCreateOpen(false);
+      setForm(createEmptyForm());
     },
   });
 
@@ -60,6 +71,8 @@ export default function ConsultationsPage() {
 
   const canManage = user?.roles?.includes('csa') || user?.roles?.includes('admin');
 
+  const canCreateConsultation = Boolean(form.topic.trim() && form.followUp.trim() && form.changeReason.trim());
+
   return (
     <div className="space-y-6">
       <Card>
@@ -70,7 +83,7 @@ export default function ConsultationsPage() {
       <Card>
         <CardTitle>Consultation Notes</CardTitle>
         <div className="mt-4">
-          {canManage && <div className="mb-3"><Button onClick={() => { setCreateOpen(true); setForm((f) => ({ ...f, bookingId: '' })); }}>Create Consultation</Button></div>}
+          {canManage && <div className="mb-3"><Button onClick={() => { setForm(createEmptyForm()); setCreateOpen(true); }}>Create Consultation</Button></div>}
           <DataTable
             columns={[
               { key: 'id', title: 'ID' },
@@ -98,10 +111,10 @@ export default function ConsultationsPage() {
       {/* Duplicate consultation list removed: handled via Preview modal. */}
       
       {/* Create Consultation modal */}
-      <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Create Consultation" footer={(
+      <Modal open={createOpen} onClose={() => { setCreateOpen(false); setForm(createEmptyForm()); }} title="Create Consultation" footer={(
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
-          <Button onClick={() => createMutation.mutate({ bookingId: form.bookingId || selectedBooking, ...form })}>Create</Button>
+          <Button variant="outline" onClick={() => { setCreateOpen(false); setForm(createEmptyForm()); }}>Cancel</Button>
+          <Button onClick={() => createMutation.mutate({ bookingId: form.bookingId || selectedBooking, ...form })} disabled={!canCreateConsultation || createMutation.isPending}>Create</Button>
         </div>
       )}>
         <div className="space-y-3">
@@ -117,6 +130,26 @@ export default function ConsultationsPage() {
           </select>
           <Input placeholder="Key points" value={form.keyPoints} onChange={(e) => setForm((prev) => ({ ...prev, keyPoints: e.target.value }))} />
           <Input placeholder="Recommendation" value={form.recommendation} onChange={(e) => setForm((prev) => ({ ...prev, recommendation: e.target.value }))} />
+          <label className="block text-sm font-medium text-slate-200 mb-1">Follow-up Plan</label>
+          <textarea
+            className="w-full rounded-xl border border-slate-700 bg-slate-900/70 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-500 focus:outline-none"
+            rows={3}
+            placeholder="Describe next steps"
+            value={form.followUp}
+            onChange={(e) => setForm((prev) => ({ ...prev, followUp: e.target.value }))}
+          />
+          <label className="block text-sm font-medium text-slate-200 mb-1">Change Reason</label>
+          <select
+            className="w-full rounded-xl border border-slate-700 bg-slate-900/70 px-3 py-2 text-sm"
+            value={form.changeReason}
+            onChange={(e) => setForm((prev) => ({ ...prev, changeReason: e.target.value }))}
+          >
+            <option value="">Select reason</option>
+            <option value="pricing_update">Pricing update</option>
+            <option value="customer_request">Customer request</option>
+            <option value="inspection_feedback">Inspection feedback</option>
+            <option value="other">Other</option>
+          </select>
         </div>
       </Modal>
 

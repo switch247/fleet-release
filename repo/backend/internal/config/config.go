@@ -1,6 +1,10 @@
 package config
 
 import (
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
+	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -33,18 +37,53 @@ type Config struct {
 }
 
 func Load() Config {
-	jwt := getEnv("JWT_SECRET", "dev-secret-change-me")
+	appEnv := strings.ToLower(strings.TrimSpace(os.Getenv("APP_ENV")))
+	if appEnv == "" {
+		appEnv = "dev"
+	}
+	isDev := appEnv == "dev" || appEnv == "development"
+
+	jwtSecret := strings.TrimSpace(os.Getenv("JWT_SECRET"))
+	dbPassword := strings.TrimSpace(os.Getenv("DB_PASSWORD"))
+
+	if jwtSecret == "" {
+		if isDev {
+			jwtSecret = randomSecret()
+		} else {
+			log.Fatalf("JWT_SECRET is required when APP_ENV=%s", appEnv)
+		}
+	}
+
+	if dbPassword == "" && !isDev {
+		log.Fatalf("DB_PASSWORD is required when APP_ENV=%s", appEnv)
+	}
+
+	databaseURL := strings.TrimSpace(os.Getenv("DATABASE_URL"))
+	if databaseURL == "" {
+		if dbPassword == "" {
+			log.Fatal("DB_PASSWORD must be provided when DATABASE_URL is not set")
+		}
+		databaseURL = fmt.Sprintf(
+			"postgres://%s:%s@%s:%s/%s?sslmode=disable",
+			getEnv("DB_USER", "fleetlease"),
+			dbPassword,
+			getEnv("DB_HOST", "db"),
+			getEnv("DB_PORT", "5432"),
+			getEnv("DB_NAME", "fleetlease"),
+		)
+	}
+
 	return Config{
 		Port:                      getEnv("PORT", "8080"),
-		JWTSecret:                 jwt,
-		AttachmentSigningSecret:   getEnv("ATTACHMENT_SIGNING_SECRET", jwt),
+		JWTSecret:                 jwtSecret,
+		AttachmentSigningSecret:   getEnv("ATTACHMENT_SIGNING_SECRET", jwtSecret),
 		IdleTimeout:               time.Duration(getEnvInt("JWT_IDLE_MINUTES", 30)) * time.Minute,
 		AbsoluteTimeout:           time.Duration(getEnvInt("JWT_ABSOLUTE_HOURS", 12)) * time.Hour,
 		AdminAllowlistCIDR:        splitCSV(getEnv("ADMIN_ALLOWLIST", "127.0.0.1/32,::1/128")),
 		TrustedProxiesCIDR:        splitCSV(getEnv("TRUSTED_PROXIES", "")),
 		EncryptionKey:             getEnv("AES256_KEY", "01234567890123456789012345678901"),
 		AttachmentDir:             getEnv("ATTACHMENT_DIR", "./data/attachments"),
-		DatabaseURL:               getEnv("DATABASE_URL", "postgres://fleetlease:fleetlease@db:5432/fleetlease?sslmode=disable"),
+		DatabaseURL:               databaseURL,
 		StoreBackend:              strings.ToLower(getEnv("STORE_BACKEND", "postgres")),
 		TLSCertFile:               getEnv("TLS_CERT_FILE", ""),
 		TLSKeyFile:                getEnv("TLS_KEY_FILE", ""),
@@ -58,6 +97,15 @@ func Load() Config {
 		RequireAdminMFA:           getEnvBool("REQUIRE_ADMIN_MFA", true),
 		DisableTLSEnforcement:     getEnvBool("DISABLE_TLS_ENFORCEMENT", false),
 	}
+}
+
+func randomSecret() string {
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		log.Printf("failed to generate random JWT secret: %v", err)
+		return fmt.Sprintf("dev-secret-%d", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(buf)
 }
 
 func getEnv(key, fallback string) string {
