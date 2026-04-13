@@ -3,21 +3,27 @@ package integration
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"sync"
 	"sync/atomic"
 	"testing"
-
-	"fleetlease/backend/pkg/public"
+	"time"
 )
 
+// TestCouponRedemptionConcurrentDedup fires 8 concurrent redemption requests
+// for the same coupon code and asserts that exactly one succeeds.
 func TestCouponRedemptionConcurrentDedup(t *testing.T) {
-	h := public.BuildHarnessForTests()
-	token := loginToken(t, h.Router, "customer", "Customer1234!")
+	skipIfNoIntLive(t)
+
+	custToken := intLogin(t, intCustUser, intCustPass)
+	bID := intCreateBooking(t, custToken)
+
+	couponCode := fmt.Sprintf("CONCUR-%d", time.Now().UnixNano())
+
 	payload, _ := json.Marshal(map[string]string{
-		"code":      "OFFLINE-COUPON-1",
-		"bookingId": h.BookingID,
+		"code":      couponCode,
+		"bookingId": bID,
 	})
 
 	var wg sync.WaitGroup
@@ -26,12 +32,20 @@ func TestCouponRedemptionConcurrentDedup(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			req := httptest.NewRequest(http.MethodPost, "/api/v1/coupons/redeem", bytes.NewReader(payload))
+			req, err := http.NewRequest(http.MethodPost,
+				intLiveServerURL+"/api/v1/coupons/redeem",
+				bytes.NewReader(payload))
+			if err != nil {
+				return
+			}
 			req.Header.Set("Content-Type", "application/json")
-			req.Header.Set("Authorization", "Bearer "+token)
-			rec := httptest.NewRecorder()
-			h.Router.ServeHTTP(rec, req)
-			if rec.Code == http.StatusOK {
+			req.Header.Set("Authorization", "Bearer "+custToken)
+			resp, err := intLiveClient.Do(req)
+			if err != nil {
+				return
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
 				atomic.AddInt32(&success, 1)
 			}
 		}()
@@ -39,6 +53,6 @@ func TestCouponRedemptionConcurrentDedup(t *testing.T) {
 	wg.Wait()
 
 	if success != 1 {
-		t.Fatalf("expected exactly one successful redemption, got %d", success)
+		t.Fatalf("expected exactly 1 successful coupon redemption, got %d", success)
 	}
 }

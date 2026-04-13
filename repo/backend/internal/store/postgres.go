@@ -72,7 +72,7 @@ func (s *PostgresStore) GetUserByUsername(username string) (models.User, bool) {
 	ctx := context.Background()
 	var u models.User
 	var locked sql.NullTime
-	err := s.pool.QueryRow(ctx, `SELECT id, username, COALESCE(email,''), password_hash, government_id_enc, COALESCE(payment_reference_enc,''), COALESCE(address_enc,''), failed_attempts, locked_until, COALESCE(totp_secret,''), COALESCE(totp_enabled,false) FROM users WHERE username=$1`, username).
+	err := s.pool.QueryRow(ctx, `SELECT id, username, COALESCE(email,''), password_hash, COALESCE(government_id_enc,''), COALESCE(payment_reference_enc,''), COALESCE(address_enc,''), failed_attempts, locked_until, COALESCE(totp_secret,''), COALESCE(totp_enabled,false) FROM users WHERE username=$1`, username).
 		Scan(&u.ID, &u.Username, &u.Email, &u.PasswordHash, &u.GovernmentIDEnc, &u.PaymentReferenceEnc, &u.AddressEnc, &u.FailedAttempts, &locked, &u.TOTPSecret, &u.TOTPEnabled)
 	if err != nil {
 		return models.User{}, false
@@ -88,7 +88,7 @@ func (s *PostgresStore) GetUserByID(id string) (models.User, bool) {
 	ctx := context.Background()
 	var u models.User
 	var locked sql.NullTime
-	err := s.pool.QueryRow(ctx, `SELECT id, username, COALESCE(email,''), password_hash, government_id_enc, COALESCE(payment_reference_enc,''), COALESCE(address_enc,''), failed_attempts, locked_until, COALESCE(totp_secret,''), COALESCE(totp_enabled,false) FROM users WHERE id=$1`, id).
+	err := s.pool.QueryRow(ctx, `SELECT id, username, COALESCE(email,''), password_hash, COALESCE(government_id_enc,''), COALESCE(payment_reference_enc,''), COALESCE(address_enc,''), failed_attempts, locked_until, COALESCE(totp_secret,''), COALESCE(totp_enabled,false) FROM users WHERE id=$1`, id).
 		Scan(&u.ID, &u.Username, &u.Email, &u.PasswordHash, &u.GovernmentIDEnc, &u.PaymentReferenceEnc, &u.AddressEnc, &u.FailedAttempts, &locked, &u.TOTPSecret, &u.TOTPEnabled)
 	if err != nil {
 		return models.User{}, false

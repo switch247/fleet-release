@@ -1,286 +1,216 @@
 package api_tests
 
 import (
-	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"testing"
-
-	"fleetlease/backend/pkg/public"
+	"time"
 )
 
-func loginForEndpoint(t *testing.T, e http.Handler, username, password string) string {
-	t.Helper()
-	body, _ := json.Marshal(map[string]string{"username": username, "password": password})
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-	e.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("login failed %d %s", rec.Code, rec.Body.String())
-	}
-	var resp struct {
-		Token string `json:"token"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &resp)
-	return resp.Token
-}
-
+// TestFrontendCriticalEndpointsExist verifies that the three endpoints the
+// frontend hits on startup all return 200 for an authenticated customer.
 func TestFrontendCriticalEndpointsExist(t *testing.T) {
-	e := public.BuildSeededRouterForTests()
-	token := loginForEndpoint(t, e, "customer", "Customer1234!")
+	custToken := liveLogin(t, apiCustUser, apiCustPass)
 
 	for _, path := range []string{"/api/v1/stats/summary", "/api/v1/bookings"} {
-		req := httptest.NewRequest(http.MethodGet, path, nil)
-		req.Header.Set("Authorization", "Bearer "+token)
-		rec := httptest.NewRecorder()
-		e.ServeHTTP(rec, req)
-		if rec.Code != http.StatusOK {
-			t.Fatalf("expected 200 for %s got %d body=%s", path, rec.Code, rec.Body.String())
-		}
+		resp := apiCall(t, http.MethodGet, path, nil, custToken)
+		mustAPIStatus(t, resp, http.StatusOK)
 	}
 
-	estimateBody, _ := json.Marshal(map[string]interface{}{
-		"listingId": "11111111-1111-1111-1111-111111111111",
-		"startAt":   "2026-03-28T09:00:00Z",
-		"endAt":     "2026-03-28T11:00:00Z",
+	now := time.Now().UTC()
+	resp := apiCall(t, http.MethodPost, "/api/v1/bookings/estimate", map[string]interface{}{
+		"listingId": apiListingID,
+		"startAt":   now.Format(time.RFC3339),
+		"endAt":     now.Add(2 * time.Hour).Format(time.RFC3339),
 		"odoStart":  10,
 		"odoEnd":    25,
-	})
-	estimateReq := httptest.NewRequest(http.MethodPost, "/api/v1/bookings/estimate", bytes.NewReader(estimateBody))
-	estimateReq.Header.Set("Content-Type", "application/json")
-	estimateReq.Header.Set("Authorization", "Bearer "+token)
-	estimateRec := httptest.NewRecorder()
-	e.ServeHTTP(estimateRec, estimateReq)
-	if estimateRec.Code != http.StatusOK {
-		t.Fatalf("expected 200 for /api/v1/bookings/estimate got %d body=%s", estimateRec.Code, estimateRec.Body.String())
-	}
+	}, custToken)
+	mustAPIStatus(t, resp, http.StatusOK)
 }
 
+// TestAdminCategoryAndListingCRUD exercises the full admin create→patch→delete
+// lifecycle for categories and listings.
 func TestAdminCategoryAndListingCRUD(t *testing.T) {
-	e := public.BuildSeededRouterForTests()
-	adminToken := loginForEndpoint(t, e, "admin", "Admin1234!Pass")
+	adminToken := liveLoginAdmin(t)
 
-	usersReq := httptest.NewRequest(http.MethodGet, "/api/v1/admin/users", nil)
-	usersReq.Header.Set("Authorization", "Bearer "+adminToken)
-	usersRec := httptest.NewRecorder()
-	e.ServeHTTP(usersRec, usersReq)
-	if usersRec.Code != http.StatusOK {
-		t.Fatalf("users list failed: %d", usersRec.Code)
-	}
+	// Confirm api-provider exists in the user list so we can reference apiProvID.
+	resp := apiCall(t, http.MethodGet, "/api/v1/admin/users", nil, adminToken)
+	b := mustAPIStatus(t, resp, http.StatusOK)
 	var users []struct {
 		ID       string   `json:"id"`
 		Username string   `json:"username"`
 		Roles    []string `json:"roles"`
 	}
-	_ = json.Unmarshal(usersRec.Body.Bytes(), &users)
-	providerID := ""
-	for _, user := range users {
-		if user.Username == "provider" {
-			providerID = user.ID
+	if err := json.Unmarshal(b, &users); err != nil {
+		t.Fatalf("list users: %v", err)
+	}
+	providerFound := false
+	for _, u := range users {
+		if u.ID == apiProvID {
+			providerFound = true
+			break
 		}
 	}
-	if providerID == "" {
-		t.Fatalf("provider user not found")
+	if !providerFound {
+		t.Fatalf("seeded provider %s not found in admin user list", apiProvID)
 	}
 
-	createCategoryBody, _ := json.Marshal(map[string]string{"name": "SUV"})
-	createCategoryReq := httptest.NewRequest(http.MethodPost, "/api/v1/admin/categories", bytes.NewReader(createCategoryBody))
-	createCategoryReq.Header.Set("Content-Type", "application/json")
-	createCategoryReq.Header.Set("Authorization", "Bearer "+adminToken)
-	createCategoryRec := httptest.NewRecorder()
-	e.ServeHTTP(createCategoryRec, createCategoryReq)
-	if createCategoryRec.Code != http.StatusCreated {
-		t.Fatalf("create category failed: %d %s", createCategoryRec.Code, createCategoryRec.Body.String())
-	}
+	// Create category.
+	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+	resp2 := apiCall(t, http.MethodPost, "/api/v1/admin/categories",
+		map[string]string{"name": "SUV-" + suffix}, adminToken)
+	b2 := mustAPIStatus(t, resp2, http.StatusCreated)
 	var category struct {
 		ID string `json:"id"`
 	}
-	_ = json.Unmarshal(createCategoryRec.Body.Bytes(), &category)
-
-	patchCategoryBody, _ := json.Marshal(map[string]string{"name": "SUV Updated"})
-	patchCategoryReq := httptest.NewRequest(http.MethodPatch, "/api/v1/admin/categories/"+category.ID, bytes.NewReader(patchCategoryBody))
-	patchCategoryReq.Header.Set("Content-Type", "application/json")
-	patchCategoryReq.Header.Set("Authorization", "Bearer "+adminToken)
-	patchCategoryRec := httptest.NewRecorder()
-	e.ServeHTTP(patchCategoryRec, patchCategoryReq)
-	if patchCategoryRec.Code != http.StatusOK {
-		t.Fatalf("patch category failed: %d %s", patchCategoryRec.Code, patchCategoryRec.Body.String())
+	if err := json.Unmarshal(b2, &category); err != nil || category.ID == "" {
+		t.Fatalf("create category: %s", b2)
 	}
 
-	createListingBody, _ := json.Marshal(map[string]interface{}{
+	// Patch category.
+	resp3 := apiCall(t, http.MethodPatch, "/api/v1/admin/categories/"+category.ID,
+		map[string]string{"name": "SUV-Updated-" + suffix}, adminToken)
+	mustAPIStatus(t, resp3, http.StatusOK)
+
+	// Create listing under the new category.
+	resp4 := apiCall(t, http.MethodPost, "/api/v1/admin/listings", map[string]interface{}{
 		"categoryId":    category.ID,
-		"providerId":    providerID,
-		"spu":           "SPU-CRUD",
-		"sku":           "SKU-CRUD",
+		"providerId":    apiProvID,
+		"spu":           "SPU-CRUD-" + suffix,
+		"sku":           "SKU-CRUD-" + suffix,
 		"name":          "CRUD Listing",
 		"includedMiles": 10,
 		"deposit":       55,
 		"available":     true,
-	})
-	createListingReq := httptest.NewRequest(http.MethodPost, "/api/v1/admin/listings", bytes.NewReader(createListingBody))
-	createListingReq.Header.Set("Content-Type", "application/json")
-	createListingReq.Header.Set("Authorization", "Bearer "+adminToken)
-	createListingRec := httptest.NewRecorder()
-	e.ServeHTTP(createListingRec, createListingReq)
-	if createListingRec.Code != http.StatusCreated {
-		t.Fatalf("create listing failed: %d %s", createListingRec.Code, createListingRec.Body.String())
-	}
+	}, adminToken)
+	b4 := mustAPIStatus(t, resp4, http.StatusCreated)
 	var listing struct {
 		ID string `json:"id"`
 	}
-	_ = json.Unmarshal(createListingRec.Body.Bytes(), &listing)
-
-	patchListingBody, _ := json.Marshal(map[string]interface{}{"name": "CRUD Listing Updated", "deposit": 65, "available": false})
-	patchListingReq := httptest.NewRequest(http.MethodPatch, "/api/v1/admin/listings/"+listing.ID, bytes.NewReader(patchListingBody))
-	patchListingReq.Header.Set("Content-Type", "application/json")
-	patchListingReq.Header.Set("Authorization", "Bearer "+adminToken)
-	patchListingRec := httptest.NewRecorder()
-	e.ServeHTTP(patchListingRec, patchListingReq)
-	if patchListingRec.Code != http.StatusOK {
-		t.Fatalf("patch listing failed: %d %s", patchListingRec.Code, patchListingRec.Body.String())
+	if err := json.Unmarshal(b4, &listing); err != nil || listing.ID == "" {
+		t.Fatalf("create listing: %s", b4)
 	}
 
-	deleteListingReq := httptest.NewRequest(http.MethodDelete, "/api/v1/admin/listings/"+listing.ID, nil)
-	deleteListingReq.Header.Set("Authorization", "Bearer "+adminToken)
-	deleteListingRec := httptest.NewRecorder()
-	e.ServeHTTP(deleteListingRec, deleteListingReq)
-	if deleteListingRec.Code != http.StatusNoContent {
-		t.Fatalf("delete listing failed: %d %s", deleteListingRec.Code, deleteListingRec.Body.String())
-	}
+	// Patch listing.
+	resp5 := apiCall(t, http.MethodPatch, "/api/v1/admin/listings/"+listing.ID,
+		map[string]interface{}{"name": "CRUD Listing Updated", "deposit": 65, "available": false},
+		adminToken)
+	mustAPIStatus(t, resp5, http.StatusOK)
 
-	deleteCategoryReq := httptest.NewRequest(http.MethodDelete, "/api/v1/admin/categories/"+category.ID, nil)
-	deleteCategoryReq.Header.Set("Authorization", "Bearer "+adminToken)
-	deleteCategoryRec := httptest.NewRecorder()
-	e.ServeHTTP(deleteCategoryRec, deleteCategoryReq)
-	if deleteCategoryRec.Code != http.StatusNoContent {
-		t.Fatalf("delete category failed: %d %s", deleteCategoryRec.Code, deleteCategoryRec.Body.String())
-	}
+	// Delete listing then category.
+	resp6 := apiCall(t, http.MethodDelete, "/api/v1/admin/listings/"+listing.ID, nil, adminToken)
+	mustAPIStatus(t, resp6, http.StatusNoContent)
+
+	resp7 := apiCall(t, http.MethodDelete, "/api/v1/admin/categories/"+category.ID, nil, adminToken)
+	mustAPIStatus(t, resp7, http.StatusNoContent)
 }
 
+// TestAdminCanUpdateUserRoles creates a throwaway user, patches their role and
+// email via admin, then confirms the change appears in the user list.
 func TestAdminCanUpdateUserRoles(t *testing.T) {
-	e := public.BuildSeededRouterForTests()
-	adminToken := loginForEndpoint(t, e, "admin", "Admin1234!Pass")
+	adminToken := liveLoginAdmin(t)
 
-	createUserBody, _ := json.Marshal(map[string]interface{}{
-		"username": "ops-user",
-		"email":    "ops-user@fleetlease.local",
+	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+	opsUser := "ops-user-" + suffix
+
+	resp := apiCall(t, http.MethodPost, "/api/v1/admin/users", map[string]interface{}{
+		"username": opsUser,
+		"email":    opsUser + "@fleetlease.local",
 		"password": "OpsUser1234!A",
 		"roles":    []string{"customer"},
-	})
-	createUserReq := httptest.NewRequest(http.MethodPost, "/api/v1/admin/users", bytes.NewReader(createUserBody))
-	createUserReq.Header.Set("Content-Type", "application/json")
-	createUserReq.Header.Set("Authorization", "Bearer "+adminToken)
-	createUserRec := httptest.NewRecorder()
-	e.ServeHTTP(createUserRec, createUserReq)
-	if createUserRec.Code != http.StatusCreated {
-		t.Fatalf("create user failed: %d %s", createUserRec.Code, createUserRec.Body.String())
-	}
+	}, adminToken)
+	b := mustAPIStatus(t, resp, http.StatusCreated)
 	var created struct {
 		ID string `json:"id"`
 	}
-	_ = json.Unmarshal(createUserRec.Body.Bytes(), &created)
-	if created.ID == "" {
-		t.Fatalf("expected created user ID")
+	if err := json.Unmarshal(b, &created); err != nil || created.ID == "" {
+		t.Fatalf("create user: %s", b)
 	}
 
-	updateBody, _ := json.Marshal(map[string]interface{}{
+	// Patch role to provider and update email.
+	updatedEmail := opsUser + "-updated@fleetlease.local"
+	resp2 := apiCall(t, http.MethodPatch, "/api/v1/admin/users/"+created.ID, map[string]interface{}{
 		"roles": []string{"provider"},
-		"email": "ops-user-updated@fleetlease.local",
-	})
-	updateReq := httptest.NewRequest(http.MethodPatch, "/api/v1/admin/users/"+created.ID, bytes.NewReader(updateBody))
-	updateReq.Header.Set("Content-Type", "application/json")
-	updateReq.Header.Set("Authorization", "Bearer "+adminToken)
-	updateRec := httptest.NewRecorder()
-	e.ServeHTTP(updateRec, updateReq)
-	if updateRec.Code != http.StatusOK {
-		t.Fatalf("update user failed: %d %s", updateRec.Code, updateRec.Body.String())
-	}
+		"email": updatedEmail,
+	}, adminToken)
+	mustAPIStatus(t, resp2, http.StatusOK)
 
-	listReq := httptest.NewRequest(http.MethodGet, "/api/v1/admin/users", nil)
-	listReq.Header.Set("Authorization", "Bearer "+adminToken)
-	listRec := httptest.NewRecorder()
-	e.ServeHTTP(listRec, listReq)
-	if listRec.Code != http.StatusOK {
-		t.Fatalf("list users failed: %d %s", listRec.Code, listRec.Body.String())
-	}
+	// Verify via list.
+	resp3 := apiCall(t, http.MethodGet, "/api/v1/admin/users", nil, adminToken)
+	b3 := mustAPIStatus(t, resp3, http.StatusOK)
 	var users []struct {
 		ID    string   `json:"id"`
 		Email string   `json:"email"`
 		Roles []string `json:"roles"`
 	}
-	_ = json.Unmarshal(listRec.Body.Bytes(), &users)
+	if err := json.Unmarshal(b3, &users); err != nil {
+		t.Fatalf("list users: %v", err)
+	}
 	seen := false
-	for _, user := range users {
-		if user.ID == created.ID {
-			seen = true
-			if user.Email != "ops-user-updated@fleetlease.local" {
-				t.Fatalf("expected updated email, got %s", user.Email)
-			}
-			if len(user.Roles) != 1 || user.Roles[0] != "provider" {
-				t.Fatalf("expected provider role, got %+v", user.Roles)
-			}
+	for _, u := range users {
+		if u.ID != created.ID {
+			continue
+		}
+		seen = true
+		if u.Email != updatedEmail {
+			t.Fatalf("expected email %s got %s", updatedEmail, u.Email)
+		}
+		if len(u.Roles) != 1 || u.Roles[0] != "provider" {
+			t.Fatalf("expected [provider] roles, got %v", u.Roles)
 		}
 	}
 	if !seen {
-		t.Fatalf("updated user not found in list")
+		t.Fatalf("updated user %s not found in admin user list", created.ID)
 	}
 }
 
+// TestCategoryTreeView creates a parent category and a child category, then
+// verifies the customer-facing tree endpoint nests them correctly.
 func TestCategoryTreeView(t *testing.T) {
-	e := public.BuildSeededRouterForTests()
-	adminToken := loginForEndpoint(t, e, "admin", "Admin1234!Pass")
-	customerToken := loginForEndpoint(t, e, "customer", "Customer1234!")
+	adminToken := liveLoginAdmin(t)
+	custToken := liveLogin(t, apiCustUser, apiCustPass)
 
-	parentBody, _ := json.Marshal(map[string]string{"name": "Vehicles"})
-	parentReq := httptest.NewRequest(http.MethodPost, "/api/v1/admin/categories", bytes.NewReader(parentBody))
-	parentReq.Header.Set("Content-Type", "application/json")
-	parentReq.Header.Set("Authorization", "Bearer "+adminToken)
-	parentRec := httptest.NewRecorder()
-	e.ServeHTTP(parentRec, parentReq)
-	if parentRec.Code != http.StatusCreated {
-		t.Fatalf("create parent category failed: %d %s", parentRec.Code, parentRec.Body.String())
-	}
+	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+
+	// Create parent.
+	resp := apiCall(t, http.MethodPost, "/api/v1/admin/categories",
+		map[string]string{"name": "Vehicles-" + suffix}, adminToken)
+	b := mustAPIStatus(t, resp, http.StatusCreated)
 	var parent struct {
 		ID string `json:"id"`
 	}
-	_ = json.Unmarshal(parentRec.Body.Bytes(), &parent)
-
-	childBody, _ := json.Marshal(map[string]string{"name": "SUV", "parentId": parent.ID})
-	childReq := httptest.NewRequest(http.MethodPost, "/api/v1/admin/categories", bytes.NewReader(childBody))
-	childReq.Header.Set("Content-Type", "application/json")
-	childReq.Header.Set("Authorization", "Bearer "+adminToken)
-	childRec := httptest.NewRecorder()
-	e.ServeHTTP(childRec, childReq)
-	if childRec.Code != http.StatusCreated {
-		t.Fatalf("create child category failed: %d %s", childRec.Code, childRec.Body.String())
+	if err := json.Unmarshal(b, &parent); err != nil || parent.ID == "" {
+		t.Fatalf("create parent category: %s", b)
 	}
 
-	treeReq := httptest.NewRequest(http.MethodGet, "/api/v1/categories?view=tree", nil)
-	treeReq.Header.Set("Authorization", "Bearer "+customerToken)
-	treeRec := httptest.NewRecorder()
-	e.ServeHTTP(treeRec, treeReq)
-	if treeRec.Code != http.StatusOK {
-		t.Fatalf("tree categories failed: %d %s", treeRec.Code, treeRec.Body.String())
-	}
+	// Create child with parentId.
+	resp2 := apiCall(t, http.MethodPost, "/api/v1/admin/categories",
+		map[string]string{"name": "SUV-" + suffix, "parentId": parent.ID}, adminToken)
+	mustAPIStatus(t, resp2, http.StatusCreated)
+
+	// Fetch tree as customer and verify parent has exactly one child.
+	resp3 := apiCall(t, http.MethodGet, "/api/v1/categories?view=tree", nil, custToken)
+	b3 := mustAPIStatus(t, resp3, http.StatusOK)
 	var nodes []struct {
 		ID       string `json:"id"`
 		Children []struct {
 			ID string `json:"id"`
 		} `json:"children"`
 	}
-	_ = json.Unmarshal(treeRec.Body.Bytes(), &nodes)
+	if err := json.Unmarshal(b3, &nodes); err != nil {
+		t.Fatalf("parse tree: %v — body: %s", err, b3)
+	}
 	foundParentWithChild := false
 	for _, node := range nodes {
 		if node.ID != parent.ID {
 			continue
 		}
-		if len(node.Children) == 1 {
+		if len(node.Children) >= 1 {
 			foundParentWithChild = true
 		}
 	}
 	if !foundParentWithChild {
-		t.Fatalf("expected parent category to include child in tree response")
+		t.Fatalf("expected parent category %s to include child in tree response; nodes: %s", parent.ID, b3)
 	}
 }

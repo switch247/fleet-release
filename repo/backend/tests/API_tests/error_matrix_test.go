@@ -1,85 +1,86 @@
 package api_tests
 
 import (
-	"bytes"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"testing"
-
-	"fleetlease/backend/pkg/public"
 )
 
 func TestAPIErrorMatrix(t *testing.T) {
-	e := public.BuildSeededRouterForTests()
-	customerToken := loginForEndpoint(t, e, "customer", "Customer1234!")
-	agentToken := loginForEndpoint(t, e, "agent", "Agent1234!Pass")
+	custToken := liveLogin(t, apiCustUser, apiCustPass)
+	agentToken := liveLogin(t, apiAgentUser, apiAgentPass)
 
-	consultationBody := `{"bookingId":"22222222-2222-2222-2222-222222222222","topic":"lane","visibility":"csa_admin"}`
-	createConsult := httptest.NewRequest(http.MethodPost, "/api/v1/consultations", bytes.NewBufferString(consultationBody))
-	createConsult.Header.Set("Content-Type", "application/json")
-	createConsult.Header.Set("Authorization", "Bearer "+agentToken)
-	createConsultRec := httptest.NewRecorder()
-	e.ServeHTTP(createConsultRec, createConsult)
-	if createConsultRec.Code != http.StatusCreated {
-		t.Fatalf("consultation setup failed: %d %s", createConsultRec.Code, createConsultRec.Body.String())
-	}
+	// Create a consultation on the seeded booking via agent.
+	resp := apiCall(t, http.MethodPost, "/api/v1/consultations", map[string]interface{}{
+		"bookingId":  apiBookingID,
+		"topic":      "lane",
+		"visibility": "csa_admin",
+	}, agentToken)
+	b := mustAPIStatus(t, resp, http.StatusCreated)
 	var consultResult struct {
 		ID string `json:"id"`
 	}
-	_ = json.Unmarshal(createConsultRec.Body.Bytes(), &consultResult)
-
-	// settle booking once to trigger conflict on second attempt
-	settleReq := httptest.NewRequest(http.MethodPost, "/api/v1/settlements/close/22222222-2222-2222-2222-222222222222", nil)
-	settleReq.Header.Set("Authorization", "Bearer "+customerToken)
-	settleRec := httptest.NewRecorder()
-	e.ServeHTTP(settleRec, settleReq)
-	if settleRec.Code != http.StatusOK {
-		t.Fatalf("initial settlement failed: %d %s", settleRec.Code, settleRec.Body.String())
+	if err := json.Unmarshal(b, &consultResult); err != nil || consultResult.ID == "" {
+		t.Fatalf("create consultation: bad response %s", b)
 	}
 
+	// Settle a fresh booking so we can provoke a 409 on a second attempt.
+	// We need a booking we can settle; use createFreshAPIBooking so the seeded
+	// apiBookingID is left intact for other tests.
+	freshID := createFreshAPIBooking(t, custToken)
+
+	resp2 := apiCall(t, http.MethodPost, "/api/v1/settlements/close/"+freshID, nil, custToken)
+	mustAPIStatus(t, resp2, http.StatusOK)
+
+	// -----------------------------------------------------------------------
+	// Error matrix
+	// -----------------------------------------------------------------------
 	testCases := []struct {
 		name   string
-		req    *http.Request
+		method string
+		path   string
+		body   interface{}
 		token  string
 		expect int
 	}{
 		{
 			name:   "bookings_unauthenticated",
-			req:    httptest.NewRequest(http.MethodGet, "/api/v1/bookings", nil),
+			method: http.MethodGet,
+			path:   "/api/v1/bookings",
 			token:  "",
 			expect: http.StatusUnauthorized,
 		},
 		{
+			// Consultation was created with visibility=csa_admin; customer should
+			// be forbidden from reading its attachments.
 			name:   "consultation_evidence_forbidden",
-			req:    httptest.NewRequest(http.MethodGet, "/api/v1/consultations/"+consultResult.ID+"/attachments", nil),
-			token:  customerToken,
+			method: http.MethodGet,
+			path:   "/api/v1/consultations/" + consultResult.ID + "/attachments",
+			token:  custToken,
 			expect: http.StatusForbidden,
 		},
 		{
 			name:   "inspections_missing_booking",
-			req:    httptest.NewRequest(http.MethodGet, "/api/v1/inspections?bookingId=missing-id", nil),
-			token:  customerToken,
+			method: http.MethodGet,
+			path:   "/api/v1/inspections?bookingId=missing-id",
+			token:  custToken,
 			expect: http.StatusNotFound,
 		},
 		{
+			// Second settlement attempt on the already-settled fresh booking → 409.
 			name:   "settlement_conflict",
-			req:    httptest.NewRequest(http.MethodPost, "/api/v1/settlements/close/22222222-2222-2222-2222-222222222222", nil),
-			token:  customerToken,
+			method: http.MethodPost,
+			path:   "/api/v1/settlements/close/" + freshID,
+			token:  custToken,
 			expect: http.StatusConflict,
 		},
 	}
 
 	for _, tc := range testCases {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			if tc.token != "" {
-				tc.req.Header.Set("Authorization", "Bearer "+tc.token)
-			}
-			rec := httptest.NewRecorder()
-			e.ServeHTTP(rec, tc.req)
-			if rec.Code != tc.expect {
-				t.Fatalf("%s expected %d got %d body=%s", tc.name, tc.expect, rec.Code, rec.Body.String())
-			}
+			resp := apiCall(t, tc.method, tc.path, tc.body, tc.token)
+			mustAPIStatus(t, resp, tc.expect)
 		})
 	}
 }

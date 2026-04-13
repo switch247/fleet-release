@@ -37,7 +37,6 @@ docker-compose.*.local.yml
 Thumbs.db
 ehthumbs.db
 Desktop.ini
-
 (# Logs, runtime)
 logs/
 *.log
@@ -69,7 +68,9 @@ vendor/
 (# Misc)
 .DS_Store
 /.tmp/.versions
-/.tmp/
-
+/.tmp/_old
+# /.tmp/
+/session
 /.meta
 /.reports
+/.claude

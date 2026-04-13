@@ -1,28 +1,33 @@
 package api_tests
 
 import (
+	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"testing"
-
-	"fleetlease/backend/pkg/public"
 )
 
-func TestBackupRestoreDegradedWhenScriptsMissing(t *testing.T) {
-	e := public.BuildSeededRouterForTests()
-	adminToken := loginForEndpoint(t, e, "admin", "Admin1234!Pass")
+func TestAdminBackupAndRestoreEndpoints(t *testing.T) {
+	adminToken := liveLoginAdmin(t)
 
-	tests := []string{
-		"/api/v1/admin/backup/now",
-		"/api/v1/admin/restore/now",
+	// Backup should succeed: scripts are present and DB is reachable.
+	backupResp := apiCall(t, http.MethodPost, "/api/v1/admin/backup/now", nil, adminToken)
+	backupBody := mustAPIStatus(t, backupResp, http.StatusOK)
+	var backupJob struct {
+		Status   string `json:"status"`
+		Artifact string `json:"artifact"`
 	}
-	for _, path := range tests {
-		req := httptest.NewRequest(http.MethodPost, path, nil)
-		req.Header.Set("Authorization", "Bearer "+adminToken)
-		rec := httptest.NewRecorder()
-		e.ServeHTTP(rec, req)
-		if rec.Code != http.StatusServiceUnavailable {
-			t.Fatalf("expected 503 for %s got %d body=%s", path, rec.Code, rec.Body.String())
-		}
+	if err := json.Unmarshal(backupBody, &backupJob); err != nil {
+		t.Fatalf("backup: bad JSON %s", backupBody)
 	}
+	if backupJob.Status != "completed" {
+		t.Fatalf("backup: expected status=completed, got %q (body: %s)", backupJob.Status, backupBody)
+	}
+	if backupJob.Artifact != "local-backup" {
+		t.Fatalf("backup: expected artifact=local-backup, got %q", backupJob.Artifact)
+	}
+
+	// Restore is intentionally omitted: running restore concurrently with other
+	// live-test packages (go test ./... runs packages in parallel) would
+	// re-apply the pg_dump and wipe ledger/complaint entries created by those
+	// tests, causing spurious failures.
 }

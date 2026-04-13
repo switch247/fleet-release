@@ -151,7 +151,9 @@ func (h *Handler) CloseSettlement(c echo.Context) error {
 	if len(prev) > 0 {
 		prevHash = prev[len(prev)-1].Hash
 	}
-	now := time.Now().UTC()
+	// Truncate to microsecond precision so the timestamp stored in postgres
+	// (which has µs resolution) matches the value used to compute the hash.
+	now := time.Now().UTC().Truncate(time.Microsecond)
 	chargeHash := services.ChainHash(prevHash, "trip_charge|"+formatAmount(booking.EstimatedAmount)+"|Trip fare settlement", now)
 	charge := models.LedgerEntry{ID: uuid.NewString(), BookingID: bookingID, Type: "trip_charge", Amount: booking.EstimatedAmount, Description: "Trip fare settlement", CreatedAt: now, PrevHash: prevHash, Hash: chargeHash}
 	h.Store.AppendLedger(bookingID, charge)
@@ -161,8 +163,9 @@ func (h *Handler) CloseSettlement(c echo.Context) error {
 	if refundAmount < 0 {
 		refundType = "deposit_deduction"
 	}
-	refundHash := services.ChainHash(refundPrev, refundType+"|"+formatAmount(refundAmount)+"|Auto settlement of deposit", now)
-	refund := models.LedgerEntry{ID: uuid.NewString(), BookingID: bookingID, Type: refundType, Amount: refundAmount, Description: "Auto settlement of deposit", CreatedAt: now, PrevHash: refundPrev, Hash: refundHash}
+	refundAt := now.Add(time.Millisecond)
+	refundHash := services.ChainHash(refundPrev, refundType+"|"+formatAmount(refundAmount)+"|Auto settlement of deposit", refundAt)
+	refund := models.LedgerEntry{ID: uuid.NewString(), BookingID: bookingID, Type: refundType, Amount: refundAmount, Description: "Auto settlement of deposit", CreatedAt: refundAt, PrevHash: refundPrev, Hash: refundHash}
 	h.Store.AppendLedger(bookingID, refund)
 	booking.Status = "settled"
 	h.Store.SaveBooking(booking)
