@@ -24,6 +24,8 @@ export async function api(path, options = {}) {
   return response.json();
 }
 
+export const apiFetch = api;
+
 export async function login(payload) {
   const data = await api('/auth/login', { method: 'POST', body: JSON.stringify(payload) });
   localStorage.setItem('token', data.token);

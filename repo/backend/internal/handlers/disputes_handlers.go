@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -376,5 +377,190 @@ func (h *Handler) Notifications(c echo.Context) error {
 }
 
 func (h *Handler) SyncReconcile(c echo.Context) error {
-	return c.JSON(http.StatusOK, map[string]string{"status": "reconciled"})
+	var req struct {
+		Operations []struct {
+			IdempotencyKey string                 `json:"idempotencyKey"`
+			Type           string                 `json:"type"`
+			Payload        map[string]interface{} `json:"payload"`
+		} `json:"operations"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid payload"})
+	}
+	if len(req.Operations) == 0 {
+		return c.JSON(http.StatusOK, map[string]interface{}{"status": "reconciled", "applied": 0, "total": 0, "results": []interface{}{}})
+	}
+
+	actor, _ := c.Get("userID").(string)
+	roles, _ := c.Get("roles").([]models.Role)
+
+	type OpResult struct {
+		IdempotencyKey string `json:"idempotencyKey"`
+		Type           string `json:"type"`
+		Status         string `json:"status"`
+		Reason         string `json:"reason,omitempty"`
+	}
+
+	applied := 0
+	results := make([]OpResult, 0, len(req.Operations))
+
+	for _, op := range req.Operations {
+		r := OpResult{IdempotencyKey: op.IdempotencyKey, Type: op.Type}
+
+		// Idempotency guard: if this key was already applied, return a deterministic
+		// replay result without re-executing the operation.
+		if op.IdempotencyKey != "" && h.Store.MarkReconcileApplied(actor, op.IdempotencyKey) {
+			r.Status = "already_applied"
+			applied++
+			results = append(results, r)
+			continue
+		}
+
+		switch op.Type {
+		case "booking":
+			if err := h.applyQueuedBooking(actor, op.Payload); err != nil {
+				r.Status = "error"
+				r.Reason = err.Error()
+			} else {
+				r.Status = "applied"
+				applied++
+			}
+		case "complaint":
+			if err := h.applyQueuedComplaint(actor, roles, op.Payload); err != nil {
+				r.Status = "error"
+				r.Reason = err.Error()
+			} else {
+				r.Status = "applied"
+				applied++
+			}
+		case "inspection":
+			if err := h.applyQueuedInspection(actor, roles, op.Payload); err != nil {
+				r.Status = "error"
+				r.Reason = err.Error()
+			} else {
+				r.Status = "applied"
+				applied++
+			}
+		default:
+			r.Status = "skipped"
+			r.Reason = "unknown operation type"
+		}
+		results = append(results, r)
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"status":  "reconciled",
+		"applied": applied,
+		"total":   len(results),
+		"results": results,
+	})
+}
+
+func jsonConvert(src map[string]interface{}, dst interface{}) error {
+	b, err := json.Marshal(src)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(b, dst)
+}
+
+func (h *Handler) applyQueuedBooking(actor string, payload map[string]interface{}) error {
+	var req struct {
+		ListingID  string  `json:"listingId"`
+		CouponCode string  `json:"couponCode"`
+		StartAt    string  `json:"startAt"`
+		EndAt      string  `json:"endAt"`
+		OdoStart   float64 `json:"odoStart"`
+		OdoEnd     float64 `json:"odoEnd"`
+	}
+	if err := jsonConvert(payload, &req); err != nil {
+		return fmt.Errorf("invalid booking payload: %w", err)
+	}
+	listing, ok := h.Store.GetListing(req.ListingID)
+	if !ok {
+		return fmt.Errorf("listing not found: %s", req.ListingID)
+	}
+	startAt, err := time.Parse(time.RFC3339, req.StartAt)
+	if err != nil {
+		return fmt.Errorf("invalid startAt: %w", err)
+	}
+	endAt, err := time.Parse(time.RFC3339, req.EndAt)
+	if err != nil {
+		return fmt.Errorf("invalid endAt: %w", err)
+	}
+	if !endAt.After(startAt) {
+		return fmt.Errorf("endAt must be after startAt")
+	}
+	pricingCfg := h.Pricing
+	pricingCfg.IncludedMiles = listing.IncludedMiles
+	estimate := services.EstimateFare(pricingCfg, services.EstimateInput{
+		StartAt: startAt, EndAt: endAt, OdoStart: req.OdoStart, OdoEnd: req.OdoEnd, Deposit: listing.Deposit,
+	})
+	booking := models.Booking{
+		ID: uuid.NewString(), CustomerID: actor, ProviderID: listing.ProviderID, ListingID: listing.ID,
+		CouponCode: req.CouponCode, StartAt: startAt, EndAt: endAt, OdoStart: req.OdoStart, OdoEnd: req.OdoEnd,
+		Status: "booked", EstimatedAmount: estimate.Total, DepositAmount: estimate.Deposit,
+	}
+	h.Store.SaveBooking(booking)
+	return nil
+}
+
+func (h *Handler) applyQueuedComplaint(actor string, roles []models.Role, payload map[string]interface{}) error {
+	var req struct {
+		BookingID string `json:"bookingId"`
+		Outcome   string `json:"outcome"`
+	}
+	if err := jsonConvert(payload, &req); err != nil {
+		return fmt.Errorf("invalid complaint payload: %w", err)
+	}
+	booking, ok := h.Store.GetBooking(req.BookingID)
+	if !ok {
+		return fmt.Errorf("booking not found: %s", req.BookingID)
+	}
+	if !canAccessBooking(actor, roles, booking) {
+		return fmt.Errorf("forbidden")
+	}
+	item := models.Complaint{
+		ID: uuid.NewString(), BookingID: req.BookingID, OpenedBy: actor,
+		Status: "open", Outcome: req.Outcome, CreatedAt: time.Now().UTC(),
+	}
+	h.Store.SaveComplaint(item)
+	return nil
+}
+
+func (h *Handler) applyQueuedInspection(actor string, roles []models.Role, payload map[string]interface{}) error {
+	var req struct {
+		BookingID string                  `json:"bookingId"`
+		Stage     string                  `json:"stage"`
+		Items     []models.InspectionItem `json:"items"`
+		Notes     string                  `json:"notes"`
+	}
+	if err := jsonConvert(payload, &req); err != nil {
+		return fmt.Errorf("invalid inspection payload: %w", err)
+	}
+	booking, ok := h.Store.GetBooking(req.BookingID)
+	if !ok {
+		return fmt.Errorf("booking not found: %s", req.BookingID)
+	}
+	if !canAccessBooking(actor, roles, booking) {
+		return fmt.Errorf("forbidden")
+	}
+	if len(req.Items) == 0 {
+		return fmt.Errorf("inspection items required")
+	}
+	prevHash := ""
+	revisions := h.Store.ListInspections(req.BookingID)
+	if len(revisions) > 0 {
+		prevHash = revisions[len(revisions)-1].Hash
+	}
+	now := time.Now().UTC()
+	payloadBytes, _ := json.Marshal(req)
+	hash := services.ChainHash(prevHash, string(payloadBytes), now)
+	rev := models.InspectionRevision{
+		RevisionID: uuid.NewString(), BookingID: req.BookingID, Stage: req.Stage,
+		Items: req.Items, Notes: req.Notes, CreatedBy: actor, CreatedAt: now,
+		PrevHash: prevHash, Hash: hash,
+	}
+	h.Store.SaveInspection(req.BookingID, rev)
+	return nil
 }

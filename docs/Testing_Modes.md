@@ -2,12 +2,12 @@
 
 ## API/Integration
 ```bash
-go test ./backend/tests/API_tests/... -count=1
+cd backend && go test ./tests/API_tests/... -count=1
 ```
 
 ## Unit Tests
 ```bash
-go test ./backend/tests/unit_tests/... -count=1
+cd backend && go test ./tests/unit_tests/... -count=1
 ```
 
 ## Full Stack (Compose)

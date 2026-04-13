@@ -158,12 +158,33 @@ func (h *Handler) CloseSettlement(c echo.Context) error {
 	charge := models.LedgerEntry{ID: uuid.NewString(), BookingID: bookingID, Type: "trip_charge", Amount: booking.EstimatedAmount, Description: "Trip fare settlement", CreatedAt: now, PrevHash: prevHash, Hash: chargeHash}
 	h.Store.AppendLedger(bookingID, charge)
 	refundPrev := charge.Hash
-	refundAmount := booking.DepositAmount - booking.EstimatedAmount
+
+	// Sum wear-and-tear deduction amounts recorded across all inspection revisions.
+	var totalDeductions float64
+	for _, rev := range h.Store.ListInspections(bookingID) {
+		for _, item := range rev.Items {
+			totalDeductions += item.DamageDeductionAmount
+		}
+	}
+	nextTs := now.Add(time.Millisecond)
+	if totalDeductions > 0 {
+		wearHash := services.ChainHash(refundPrev, "wear_deduction|"+formatAmount(totalDeductions)+"|Inspection wear-and-tear deduction", nextTs)
+		wearEntry := models.LedgerEntry{
+			ID: uuid.NewString(), BookingID: bookingID, Type: "wear_deduction",
+			Amount: totalDeductions, Description: "Inspection wear-and-tear deduction",
+			CreatedAt: nextTs, PrevHash: refundPrev, Hash: wearHash,
+		}
+		h.Store.AppendLedger(bookingID, wearEntry)
+		refundPrev = wearEntry.Hash
+		nextTs = nextTs.Add(time.Millisecond)
+	}
+
+	refundAmount := booking.DepositAmount - booking.EstimatedAmount - totalDeductions
 	refundType := "deposit_refund"
 	if refundAmount < 0 {
 		refundType = "deposit_deduction"
 	}
-	refundAt := now.Add(time.Millisecond)
+	refundAt := nextTs
 	refundHash := services.ChainHash(refundPrev, refundType+"|"+formatAmount(refundAmount)+"|Auto settlement of deposit", refundAt)
 	refund := models.LedgerEntry{ID: uuid.NewString(), BookingID: bookingID, Type: refundType, Amount: refundAmount, Description: "Auto settlement of deposit", CreatedAt: refundAt, PrevHash: refundPrev, Hash: refundHash}
 	h.Store.AppendLedger(bookingID, refund)

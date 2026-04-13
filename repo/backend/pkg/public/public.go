@@ -23,9 +23,16 @@ import (
 )
 
 type TestHarness struct {
-	Router    *echo.Echo
-	BookingID string
-	tamper    func(bookingID string)
+	Router         *echo.Echo
+	BookingID      string
+	tamper         func(bookingID string)
+	seedInspection func(bookingID string, items []models.InspectionItem)
+}
+
+func (h *TestHarness) SeedInspection(items []models.InspectionItem) {
+	if h.seedInspection != nil {
+		h.seedInspection(h.BookingID, items)
+	}
 }
 
 func (h *TestHarness) TamperLedger(bookingID string) {
@@ -70,7 +77,7 @@ func BuildSeededRouterForTests() *echo.Echo {
 		}
 		hash, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 		encrypted, _ := services.EncryptAES256([]byte(cfg.EncryptionKey), gov)
-		user := models.User{ID: id, Username: username, Email: username + "@fleetlease.local", PasswordHash: string(hash), Roles: roles, GovernmentIDEnc: services.MaskSensitive(encrypted)}
+		user := models.User{ID: id, Username: username, Email: username + "@fleetlease.local", PasswordHash: string(hash), Roles: roles, GovernmentIDEnc: encrypted}
 		st.SaveUser(user)
 		return user
 	}
@@ -103,7 +110,7 @@ func BuildHarnessForTests() *TestHarness {
 		}
 		hash, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 		encrypted, _ := services.EncryptAES256([]byte(cfg.EncryptionKey), username+"-id")
-		user := models.User{ID: id, Username: username, Email: username + "@fleetlease.local", PasswordHash: string(hash), Roles: roles, GovernmentIDEnc: services.MaskSensitive(encrypted)}
+		user := models.User{ID: id, Username: username, Email: username + "@fleetlease.local", PasswordHash: string(hash), Roles: roles, GovernmentIDEnc: encrypted}
 		st.SaveUser(user)
 		return user
 	}
@@ -137,6 +144,18 @@ func BuildHarnessForTests() *TestHarness {
 				PrevHash:    "invalid-prev-hash",
 				Hash:        "invalid-hash",
 			})
+		},
+		seedInspection: func(bID string, items []models.InspectionItem) {
+			rev := models.InspectionRevision{
+				RevisionID: uuid.NewString(),
+				BookingID:  bID,
+				Stage:      "return",
+				Items:      items,
+				Notes:      "seeded inspection",
+				CreatedBy:  customer.ID,
+				CreatedAt:  time.Now().UTC(),
+			}
+			st.SaveInspection(bID, rev)
 		},
 	}
 }

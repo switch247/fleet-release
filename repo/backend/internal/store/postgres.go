@@ -738,6 +738,18 @@ func (s *PostgresStore) MarkCouponUsed(code, bookingID string) bool {
 	return res.RowsAffected() == 1
 }
 
+func (s *PostgresStore) MarkReconcileApplied(userID, key string) bool {
+	ctx := context.Background()
+	res, err := s.pool.Exec(ctx,
+		`INSERT INTO reconcile_keys (user_id, idempotency_key) VALUES ($1, $2) ON CONFLICT (user_id, idempotency_key) DO NOTHING`,
+		userID, key,
+	)
+	if err != nil {
+		return false
+	}
+	return res.RowsAffected() == 0
+}
+
 func nullableTime(t time.Time) interface{} {
 	if t.IsZero() {
 		return nil

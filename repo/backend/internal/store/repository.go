@@ -74,4 +74,9 @@ type Repository interface {
 	ListRetentionReports(limit int) []models.RetentionReport
 
 	MarkCouponUsed(code, bookingID string) bool
+
+	// MarkReconcileApplied records that idempotencyKey has been applied for
+	// userID. Returns true if the key was already recorded (replay), false if
+	// this is the first time (newly applied).
+	MarkReconcileApplied(userID, key string) bool
 }

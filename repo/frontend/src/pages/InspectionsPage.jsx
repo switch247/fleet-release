@@ -9,6 +9,7 @@ import {
   submitInspection,
   listInspections,
 } from '../lib/api';
+import { enqueue } from '../offline/queue';
 import { Card, CardTitle } from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Badge from '../components/ui/Badge';
@@ -52,9 +53,24 @@ export default function InspectionsPage() {
 
   const [step, setStep] = useState(1); // 1=setup,2=checklist,3=review
 
+  const conditionDeductions = { good: 0, minor: 20, major: 80 };
+
   const submitMutation = useMutation({
     mutationFn: async () => {
       if (!bookingID) throw new Error('Select a booking first');
+
+      // Offline path: queue the inspection metadata without file uploads.
+      if (!navigator.onLine) {
+        const payloadItems = items.map((item) => ({
+          name: item.name,
+          condition: item.condition,
+          evidenceIds: [],
+          damageDeductionAmount: conditionDeductions[item.condition] || 0,
+        }));
+        enqueue({ type: 'inspection', path: '/inspections', method: 'POST', payload: { bookingId: bookingID, stage, items: payloadItems, notes } });
+        return;
+      }
+
       const payloadItems = [];
       for (const item of items) {
         if (!item.file) throw new Error(`Evidence file required for ${item.name}`);
@@ -73,11 +89,16 @@ export default function InspectionsPage() {
           await attachmentChunk({ uploadId, chunkBase64 });
           await attachmentComplete({ uploadId });
         }
-        payloadItems.push({ name: item.name, condition: item.condition, evidenceIds: [uploadId] });
+        payloadItems.push({
+          name: item.name,
+          condition: item.condition,
+          evidenceIds: [uploadId],
+          damageDeductionAmount: conditionDeductions[item.condition] || 0,
+        });
       }
       await submitInspection({ bookingId: bookingID, stage, items: payloadItems, notes });
     },
-    onSuccess: () => setStatus('Inspection submitted successfully.'),
+    onSuccess: () => setStatus(navigator.onLine ? 'Inspection submitted successfully.' : 'Offline: inspection queued for sync.'),
     onError: (error) => setStatus(error.message),
   });
 
@@ -104,13 +125,16 @@ export default function InspectionsPage() {
     if (!settlement) return null;
     const entries = settlement.entries || [];
     const chargeEntry = entries.find((entry) => entry.type === 'trip_charge');
+    const wearEntry = entries.find((entry) => entry.type === 'wear_deduction');
     const depositEntry = entries.find((entry) => entry.type?.startsWith('deposit'));
     const depositAmount = depositEntry?.amount ?? 0;
     const depositLabel = depositAmount < 0 ? 'Deposit Deduction' : 'Deposit Refund';
+    // Prefer the authoritative wear_deduction ledger entry over the local estimate.
+    const adjustments = wearEntry ? wearEntry.amount : deductions.total;
     return {
       entries,
       totalCharges: chargeEntry?.amount ?? 0,
-      adjustments: deductions.total,
+      adjustments,
       depositAmount,
       depositLabel,
     };

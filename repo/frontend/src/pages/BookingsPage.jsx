@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { enqueue, getQueue, flushQueue } from '../offline/queue';
-import { bookings, createBooking, estimateBooking, listings } from '../lib/api';
+import { enqueue, getQueue, reconcileQueue, flushQueue } from '../offline/queue';
+import { bookings, createBooking, estimateBooking, listings, apiFetch } from '../lib/api';
 import { Card, CardTitle } from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
@@ -42,11 +42,12 @@ export default function BookingsPage() {
 
   const syncQueue = async () => {
     try {
-      await flushQueue(async (item) => {
-        if (item.type === 'booking') {
-          await createBooking(item.payload);
-        }
-      });
+      await reconcileQueue(
+        (path, options) => apiFetch(path, options),
+        {
+          booking: (payload) => createBooking(payload),
+        },
+      );
       setQueueSize(0);
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
     } catch (error) {

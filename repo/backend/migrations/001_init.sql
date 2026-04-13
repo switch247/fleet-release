@@ -230,3 +230,10 @@ CREATE TABLE IF NOT EXISTS password_reset_evidence (
 );
 
 
+
+CREATE TABLE IF NOT EXISTS reconcile_keys (
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  idempotency_key TEXT NOT NULL,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, idempotency_key)
+);

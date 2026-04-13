@@ -14,4 +14,23 @@ module.exports = defineConfig({
   expect: {
     toHaveScreenshot: { threshold: 0.2 },
   },
+  projects: [
+    {
+      name: 'api',
+      testMatch: /.*\.spec\.js/,
+      use: {
+        baseURL: process.env.API_BASE_URL || 'https://127.0.0.1:8080',
+        ignoreHTTPSErrors: true,
+        extraHTTPHeaders: { 'Content-Type': 'application/json' },
+      },
+    },
+    {
+      name: 'ui',
+      testMatch: /.*\.ui\.spec\.js/,
+      use: {
+        baseURL: process.env.FRONTEND_BASE_URL || 'http://127.0.0.1:5173',
+        ignoreHTTPSErrors: true,
+      },
+    },
+  ],
 });

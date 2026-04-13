@@ -7,7 +7,22 @@ docker compose up --build
 
 ## Health Checks
 - Backend: `https://localhost:8080/health`
-- Frontend: `https://localhost:5173`
+- Frontend: `http://localhost:5173` (development compose; plain HTTP — terminate TLS at a reverse proxy or load balancer in production)
+
+## First-time Bootstrap (optional seed accounts)
+Set `BOOTSTRAP_SEED=true` on the backend container together with operator-chosen credentials:
+```
+BOOTSTRAP_SEED=true
+BOOTSTRAP_ADMIN_PASSWORD=<random-strong-password>
+BOOTSTRAP_CUSTOMER_PASSWORD=<random-strong-password>
+BOOTSTRAP_PROVIDER_PASSWORD=<random-strong-password>
+BOOTSTRAP_AGENT_PASSWORD=<random-strong-password>
+BOOTSTRAP_ADMIN_GOV_ID=<operator-id>         # optional; random UUID used when omitted
+BOOTSTRAP_CUSTOMER_GOV_ID=<customer-id>      # optional
+BOOTSTRAP_PROVIDER_GOV_ID=<provider-id>      # optional
+BOOTSTRAP_AGENT_GOV_ID=<agent-id>            # optional
+```
+Seeding runs only once (skipped if admin already exists). Remove `BOOTSTRAP_SEED` after first run.
 
 ## Required Configuration (Production)
 - `APP_ENV=production`

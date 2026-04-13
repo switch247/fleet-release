@@ -6,4 +6,9 @@ export default defineConfig({
   server: {
     https: true,
   },
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: [],
+  },
 });

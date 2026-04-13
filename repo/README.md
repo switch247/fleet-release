@@ -14,7 +14,7 @@ Offline-first FleetLease suite with React frontend and Go (Echo) backend for boo
 | Service | Port | Description |
 | --- | --- | --- |
 | Backend API | 8080 | HTTPS API (`/api/v1`), health (`/health`), and docs (`/docs`, `/docs/spec`). |
-| Frontend UI | 5173 | HTTPS Vite SPA. |
+| Frontend UI | 5173 | Vite SPA (HTTP in development compose setup; terminate TLS at a reverse proxy in production). |
 | PostgreSQL | 5432 | Local PostgreSQL storage. |
 
 ## Security Baseline

@@ -85,9 +85,10 @@ type StatsSummary struct {
 }
 
 type InspectionItem struct {
-	Name        string   `json:"name"`
-	Condition   string   `json:"condition"`
-	EvidenceIDs []string `json:"evidenceIds"`
+	Name                  string   `json:"name"`
+	Condition             string   `json:"condition"`
+	EvidenceIDs           []string `json:"evidenceIds"`
+	DamageDeductionAmount float64  `json:"damageDeductionAmount,omitempty"`
 }
 
 type InspectionRevision struct {
