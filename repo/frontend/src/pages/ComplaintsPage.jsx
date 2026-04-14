@@ -8,6 +8,7 @@ import DataTable from '../components/ui/DataTable';
 import Badge from '../components/ui/Badge';
 import Modal from '../components/ui/Modal';
 import { useAuth } from '../auth/AuthProvider';
+import { enqueue } from '../offline/queue';
 
 export default function ComplaintsPage() {
   const { user } = useAuth();
@@ -81,7 +82,13 @@ export default function ComplaintsPage() {
             {(bookingsQuery.data || []).map((booking) => <option key={booking.id} value={booking.id}>{booking.id}</option>)}
           </select>
           <Input placeholder="Complaint details" value={form.outcome} onChange={(e) => setForm((prev) => ({ ...prev, outcome: e.target.value }))} />
-          <Button onClick={() => createMutation.mutate(form)}>Submit</Button>
+          <Button onClick={() => {
+              if (!navigator.onLine) {
+                enqueue({ type: 'complaint', payload: { ...form } });
+                return;
+              }
+              createMutation.mutate(form);
+            }}>Submit</Button>
         </div>
       </Card>
 

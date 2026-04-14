@@ -80,8 +80,16 @@ CREATE TABLE IF NOT EXISTS bookings (
 );
 
 ALTER TABLE bookings ADD COLUMN IF NOT EXISTS coupon_code TEXT;
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS coupon_discount_amount NUMERIC(12,2) NOT NULL DEFAULT 0;
 ALTER TABLE listings ADD COLUMN IF NOT EXISTS provider_id UUID REFERENCES users(id);
 ALTER TABLE bookings ADD COLUMN IF NOT EXISTS provider_id UUID REFERENCES users(id);
+
+CREATE TABLE IF NOT EXISTS coupons (
+  id UUID PRIMARY KEY,
+  code TEXT UNIQUE NOT NULL,
+  discount_pct NUMERIC(5,4) NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
 CREATE TABLE IF NOT EXISTS inspection_revisions (
   id UUID PRIMARY KEY,
@@ -230,3 +238,10 @@ CREATE TABLE IF NOT EXISTS password_reset_evidence (
 );
 
 
+
+CREATE TABLE IF NOT EXISTS reconcile_keys (
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  idempotency_key TEXT NOT NULL,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, idempotency_key)
+);

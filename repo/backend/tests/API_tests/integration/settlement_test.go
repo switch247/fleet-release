@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"fleetlease/backend/internal/models"
 	"fleetlease/backend/pkg/public"
 )
 
@@ -72,4 +73,64 @@ func TestSettlementHashChainDetectsTampering(t *testing.T) {
 	if after.Valid {
 		t.Fatalf("expected chain to be invalid after tampering")
 	}
+}
+
+// TestSettlementIncludesWearDeductions verifies that when an inspection records
+// damage deduction amounts, closing settlement produces a wear_deduction ledger
+// entry and the deposit refund/deduction is adjusted accordingly.
+func TestSettlementIncludesWearDeductions(t *testing.T) {
+	h := public.BuildHarnessForTests()
+
+	// Seed an inspection with damage items totalling $100 in deductions.
+	h.SeedInspection([]models.InspectionItem{
+		{Name: "Exterior", Condition: "minor", DamageDeductionAmount: 20.0},
+		{Name: "Interior", Condition: "major", DamageDeductionAmount: 80.0},
+	})
+
+	token := loginToken(t, h.Router, "customer", "Customer1234!")
+
+	closeReq := httptest.NewRequest(http.MethodPost, "/api/v1/settlements/close/"+h.BookingID, nil)
+	closeReq.Header.Set("Authorization", "Bearer "+token)
+	closeRec := httptest.NewRecorder()
+	h.Router.ServeHTTP(closeRec, closeReq)
+	if closeRec.Code != http.StatusOK {
+		t.Fatalf("close settlement expected 200 got %d body=%s", closeRec.Code, closeRec.Body.String())
+	}
+
+	var body struct {
+		Ledger []struct {
+			Type   string  `json:"type"`
+			Amount float64 `json:"amount"`
+		} `json:"ledger"`
+	}
+	if err := json.Unmarshal(closeRec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("failed to parse settlement response: %v", err)
+	}
+
+	foundDeduction := false
+	var deductionAmount float64
+	for _, entry := range body.Ledger {
+		if entry.Type == "wear_deduction" {
+			foundDeduction = true
+			deductionAmount = entry.Amount
+		}
+	}
+	if !foundDeduction {
+		t.Fatal("expected wear_deduction entry in settlement ledger")
+	}
+	if deductionAmount != 100.0 {
+		t.Fatalf("expected wear_deduction amount=100.00 got %.2f", deductionAmount)
+	}
+
+	// The booking has EstimatedAmount=25, DepositAmount=75, Deductions=100.
+	// net deposit refund = 75 - 25 - 100 = -50  →  deposit_deduction
+	for _, entry := range body.Ledger {
+		if entry.Type == "deposit_deduction" {
+			if entry.Amount != -50.0 {
+				t.Fatalf("expected deposit_deduction=-50.00 got %.2f", entry.Amount)
+			}
+			return
+		}
+	}
+	t.Fatal("expected deposit_deduction entry after wear deductions exceeded deposit")
 }

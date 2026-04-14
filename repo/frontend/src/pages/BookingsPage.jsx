@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { enqueue, getQueue, flushQueue } from '../offline/queue';
-import { bookings, createBooking, estimateBooking, listings } from '../lib/api';
+import { enqueue, getQueue, reconcileQueue, flushQueue } from '../offline/queue';
+import { bookings, createBooking, estimateBooking, listings, apiFetch } from '../lib/api';
 import { Card, CardTitle } from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
@@ -42,11 +42,12 @@ export default function BookingsPage() {
 
   const syncQueue = async () => {
     try {
-      await flushQueue(async (item) => {
-        if (item.type === 'booking') {
-          await createBooking(item.payload);
-        }
-      });
+      await reconcileQueue(
+        (path, options) => apiFetch(path, options),
+        {
+          booking: (payload) => createBooking(payload),
+        },
+      );
       setQueueSize(0);
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
     } catch (error) {
@@ -79,6 +80,7 @@ export default function BookingsPage() {
   const previewEstimate = async () => {
     const payload = {
       listingId: form.listingId,
+      couponCode: form.couponCode || undefined,
       startAt: form.startAt ? new Date(form.startAt).toISOString() : null,
       endAt: form.endAt ? new Date(form.endAt).toISOString() : null,
       odoStart: Number(form.odoStart),
@@ -93,7 +95,7 @@ export default function BookingsPage() {
   useEffect(() => {
     setEstimatePreview(null);
     setEstimateError('');
-  }, [form.listingId, form.startAt, form.endAt, form.odoStart, form.odoEnd]);
+  }, [form.listingId, form.startAt, form.endAt, form.odoStart, form.odoEnd, form.couponCode]);
 
   const columns = useMemo(() => [
     { key: 'id', title: 'Booking ID' },

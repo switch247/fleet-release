@@ -74,4 +74,11 @@ type Repository interface {
 	ListRetentionReports(limit int) []models.RetentionReport
 
 	MarkCouponUsed(code, bookingID string) bool
+	// GetCouponDiscount returns the discount fraction (0.0–1.0) for a valid coupon code.
+	GetCouponDiscount(code string) (float64, bool)
+
+	// MarkReconcileApplied records that idempotencyKey has been applied for
+	// userID. Returns true if the key was already recorded (replay), false if
+	// this is the first time (newly applied).
+	MarkReconcileApplied(userID, key string) bool
 }

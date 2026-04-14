@@ -8,7 +8,7 @@ import Input from '../components/ui/Input';
 export default function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
-  const [form, setForm] = useState({ username: 'customer', password: 'Customer1234!', totpCode: '' });
+  const [form, setForm] = useState({ username: '', password: '', totpCode: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 

@@ -8,13 +8,13 @@ Offline-first FleetLease suite with React frontend and Go (Echo) backend for boo
 - `backend/`: API, auth, pricing, inspection hash chain, settlement ledger, admin operations, and retention jobs.
 - `backend/tests/`: API, integration, security, and unit tests.
 - `backend/migrations/`: PostgreSQL schema migration.
-- `docs/`: Operator and security documentation.
+- `../docs/`: Operator and security documentation (workspace root).
 
 ## Service Ports
 | Service | Port | Description |
 | --- | --- | --- |
 | Backend API | 8080 | HTTPS API (`/api/v1`), health (`/health`), and docs (`/docs`, `/docs/spec`). |
-| Frontend UI | 5173 | HTTPS Vite SPA. |
+| Frontend UI | 5173 | Vite SPA (HTTP in development compose setup; terminate TLS at a reverse proxy in production). |
 | PostgreSQL | 5432 | Local PostgreSQL storage. |
 
 ## Security Baseline
@@ -42,8 +42,29 @@ docker compose up --build
 
 ## Run Tests
 ```bash
-docker compose run --rm test
+# Full suite (spins up all services, runs real-network + in-process + unit tests):
+./run_tests.sh
+
+# Unit tests only (no Docker required):
+cd backend && go test -v ./tests/unit_tests/...
 ```
+
+### Test Architecture
+
+The backend has three test layers:
+
+| Layer | Location | Transport | Purpose |
+|---|---|---|---|
+| **Real-network HTTP** | `tests/API_tests/live/` | `net/http.Client` → TLS TCP | Covers all 66 API routes via actual HTTP against the running server |
+| **Real-network HTTP** | `tests/API_tests/` | `net/http.Client` → TLS TCP | Auth, admin ops, authorization rules, error matrix, endpoint coverage — all via real HTTP |
+| **Real-network HTTP** | `tests/API_tests/security/` | `net/http.Client` → TLS TCP | Lockout, TOTP enrollment/verification, admin MFA enforcement — live server required |
+| **Real-network HTTP** | `tests/API_tests/integration/` | `net/http.Client` → TLS TCP | Ratings/notifications, attachment integrity, presign/serve, consultation workflow, concurrency dedup |
+| **In-process only** | `tests/API_tests/security/transport_test.go`<br>`tests/API_tests/security/admin_allowlist_spoof_test.go`<br>`tests/API_tests/integration/settlement_test.go`<br>`tests/API_tests/integration/postgres_runtime_test.go` | `httptest.NewRecorder` | Requires `RemoteAddr` injection or direct store tampering — physically impossible over real TCP |
+| **Unit** | `tests/unit_tests/` | None | Store CRUD, ledger chain integrity, pricing logic, encryption, coupon enforcement |
+
+> **Note:** All API tests except the 4 in-process files listed above now use real `net/http.Client` connections against the live server. The 4 retained in-process tests cover scenarios that require setting `req.RemoteAddr` (IP spoofing) or calling `h.TamperLedger()` directly — neither is achievable over a real TCP connection.
+
+See `docs/Testing_Modes.md` for a full explanation of each layer.
 
 ## Backup and Restore
 - Backup script: `backend/scripts/backup.sh`
@@ -51,10 +72,10 @@ docker compose run --rm test
 - Scripts use `DATABASE_URL` when set; otherwise use `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_NAME`, and `DB_PASSWORD`.
 - Backup retention is controlled by `BACKUP_RETENTION_DAYS` (defaults to 30 only when unset).
 
-## Documentation
-- Deployment hardening: `docs/Deployment_Hardening.md`
-- Security checklist: `docs/Security_Checklist.md`
-- Testing modes: `docs/Testing_Modes.md`
-- Role matrix: `docs/Role_Matrix.md`
-- Security policy: `docs/Security_Policy.md`
-- Operator runbook: `docs/Operator_Runbook.md`
+## Documentation (locations reference the workspace root, one level above this repo directory)
+- Deployment hardening: `../docs/Deployment_Hardening.md`
+- Security checklist: `../docs/Security_Checklist.md`
+- Testing modes: `../docs/Testing_Modes.md`
+- Role matrix: `../docs/Role_Matrix.md`
+- Security policy: `../docs/Security_Policy.md`
+- Operator runbook: `../docs/Operator_Runbook.md`

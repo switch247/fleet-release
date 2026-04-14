@@ -1,113 +1,69 @@
 package api_tests
 
 import (
-	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"testing"
-
-	"fleetlease/backend/pkg/public"
+	"time"
 )
 
-func loginToken(t *testing.T, e http.Handler, username, password string) string {
-	t.Helper()
-	body, _ := json.Marshal(map[string]string{"username": username, "password": password})
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-	e.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("login failed for %s status=%d body=%s", username, rec.Code, rec.Body.String())
-	}
-	var payload struct {
-		Token string `json:"token"`
-	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
-		t.Fatalf("invalid login response: %v", err)
-	}
-	if payload.Token == "" {
-		t.Fatalf("missing token for %s", username)
-	}
-	return payload.Token
-}
-
+// TestProviderCannotSettleUnownedBooking verifies that a provider who does not
+// own a booking receives 403 when attempting to settle it.
 func TestProviderCannotSettleUnownedBooking(t *testing.T) {
-	e := public.BuildSeededRouterForTests()
-	adminToken := loginToken(t, e, "admin", "Admin1234!Pass")
+	adminToken := liveLoginAdmin(t)
 
-	createBody, _ := json.Marshal(map[string]interface{}{
-		"username": "provider_two",
-		"password": "ProviderTwo1234!",
-		"roles":    []string{"provider"},
-	})
-	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/admin/users", bytes.NewReader(createBody))
-	createReq.Header.Set("Content-Type", "application/json")
-	createReq.Header.Set("Authorization", "Bearer "+adminToken)
-	createRec := httptest.NewRecorder()
-	e.ServeHTTP(createRec, createReq)
-	if createRec.Code != http.StatusCreated {
-		t.Fatalf("create user failed status=%d body=%s", createRec.Code, createRec.Body.String())
-	}
+	// Create a throwaway second provider so we have someone who definitely does
+	// not own apiBookingID (which belongs to apiProvID / api-provider).
+	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+	prov2User := "prov2-" + suffix
+	prov2Pass := "ProvTwo1234!"
+	createTempUser(t, adminToken, prov2User, prov2Pass, []string{"provider"})
 
-	provider2Token := loginToken(t, e, "provider_two", "ProviderTwo1234!")
-	settleReq := httptest.NewRequest(http.MethodPost, "/api/v1/settlements/close/22222222-2222-2222-2222-222222222222", nil)
-	settleReq.Header.Set("Authorization", "Bearer "+provider2Token)
-	settleRec := httptest.NewRecorder()
-	e.ServeHTTP(settleRec, settleReq)
-	if settleRec.Code != http.StatusForbidden {
-		t.Fatalf("expected 403 got %d body=%s", settleRec.Code, settleRec.Body.String())
-	}
+	prov2Token := liveLogin(t, prov2User, prov2Pass)
+
+	resp := apiCall(t, http.MethodPost, "/api/v1/settlements/close/"+apiBookingID, nil, prov2Token)
+	mustAPIStatus(t, resp, http.StatusForbidden)
 }
 
+// TestComplaintArbitrationRequiresCSAOrAdmin verifies that a customer who
+// creates a complaint cannot arbitrate it — only CSA/admin may do so.
 func TestComplaintArbitrationRequiresCSAOrAdmin(t *testing.T) {
-	e := public.BuildSeededRouterForTests()
-	customerToken := loginToken(t, e, "customer", "Customer1234!")
+	custToken := liveLogin(t, apiCustUser, apiCustPass)
 
-	complaintBody, _ := json.Marshal(map[string]string{"bookingId": "22222222-2222-2222-2222-222222222222", "outcome": "broken mirror"})
-	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/complaints", bytes.NewReader(complaintBody))
-	createReq.Header.Set("Content-Type", "application/json")
-	createReq.Header.Set("Authorization", "Bearer "+customerToken)
-	createRec := httptest.NewRecorder()
-	e.ServeHTTP(createRec, createReq)
-	if createRec.Code != http.StatusCreated {
-		t.Fatalf("create complaint failed status=%d body=%s", createRec.Code, createRec.Body.String())
-	}
+	// Create a complaint on the seeded booking.
+	resp := apiCall(t, http.MethodPost, "/api/v1/complaints", map[string]string{
+		"bookingId": apiBookingID,
+		"outcome":   "broken mirror",
+	}, custToken)
+	b := mustAPIStatus(t, resp, http.StatusCreated)
 
 	var complaint struct {
 		ID string `json:"id"`
 	}
-	if err := json.Unmarshal(createRec.Body.Bytes(), &complaint); err != nil {
-		t.Fatalf("invalid complaint response: %v", err)
+	if err := json.Unmarshal(b, &complaint); err != nil || complaint.ID == "" {
+		t.Fatalf("create complaint: bad response %s", b)
 	}
-	arbBody, _ := json.Marshal(map[string]string{"status": "closed", "outcome": "denied"})
-	arbReq := httptest.NewRequest(http.MethodPatch, "/api/v1/complaints/"+complaint.ID+"/arbitrate", bytes.NewReader(arbBody))
-	arbReq.Header.Set("Content-Type", "application/json")
-	arbReq.Header.Set("Authorization", "Bearer "+customerToken)
-	arbRec := httptest.NewRecorder()
-	e.ServeHTTP(arbRec, arbReq)
-	if arbRec.Code != http.StatusForbidden {
-		t.Fatalf("expected 403 got %d body=%s", arbRec.Code, arbRec.Body.String())
-	}
+
+	// Customer attempts to arbitrate their own complaint → must be 403.
+	resp2 := apiCall(t, http.MethodPatch, "/api/v1/complaints/"+complaint.ID+"/arbitrate",
+		map[string]string{"status": "closed", "outcome": "denied"},
+		custToken)
+	mustAPIStatus(t, resp2, http.StatusForbidden)
 }
 
+// TestNonCustomerCannotCreateBooking verifies that a provider cannot create a
+// booking (only customers may).
 func TestNonCustomerCannotCreateBooking(t *testing.T) {
-	e := public.BuildSeededRouterForTests()
-	providerToken := loginToken(t, e, "provider", "Provider1234!")
+	provToken := liveLogin(t, apiProvUser, apiProvPass)
 
-	bookingBody, _ := json.Marshal(map[string]interface{}{
-		"listingId": "11111111-1111-1111-1111-111111111111",
-		"startAt":   "2026-04-02T10:00:00Z",
-		"endAt":     "2026-04-03T10:00:00Z",
+	now := time.Now().UTC()
+	resp := apiCall(t, http.MethodPost, "/api/v1/bookings", map[string]interface{}{
+		"listingId": apiListingID,
+		"startAt":   now.Format(time.RFC3339),
+		"endAt":     now.Add(2 * time.Hour).Format(time.RFC3339),
 		"odoStart":  1000.0,
 		"odoEnd":    1100.0,
-	})
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/bookings", bytes.NewReader(bookingBody))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+providerToken)
-	rec := httptest.NewRecorder()
-	e.ServeHTTP(rec, req)
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("expected 403 got %d body=%s", rec.Code, rec.Body.String())
-	}
+	}, provToken)
+	mustAPIStatus(t, resp, http.StatusForbidden)
 }

@@ -149,24 +149,68 @@ func initRepository(cfg config.Config, logger *slog.Logger) store.Repository {
 }
 
 func seed(st store.Repository, cfg config.Config) {
-	if st.UsernameExists("admin") {
+	if strings.ToLower(os.Getenv("BOOTSTRAP_SEED")) != "true" {
 		return
 	}
+	if st.UsernameExists("admin") {
+		log.Println("bootstrap: admin already exists, skipping seed")
+		return
+	}
+
+	adminPass := os.Getenv("BOOTSTRAP_ADMIN_PASSWORD")
+	customerPass := os.Getenv("BOOTSTRAP_CUSTOMER_PASSWORD")
+	providerPass := os.Getenv("BOOTSTRAP_PROVIDER_PASSWORD")
+	agentPass := os.Getenv("BOOTSTRAP_AGENT_PASSWORD")
+
+	for _, v := range []struct{ name, val string }{
+		{"BOOTSTRAP_ADMIN_PASSWORD", adminPass},
+		{"BOOTSTRAP_CUSTOMER_PASSWORD", customerPass},
+		{"BOOTSTRAP_PROVIDER_PASSWORD", providerPass},
+		{"BOOTSTRAP_AGENT_PASSWORD", agentPass},
+	} {
+		if strings.TrimSpace(v.val) == "" {
+			log.Fatalf("bootstrap seeding requires %s to be set", v.name)
+		}
+	}
+
+	adminGovID := os.Getenv("BOOTSTRAP_ADMIN_GOV_ID")
+	customerGovID := os.Getenv("BOOTSTRAP_CUSTOMER_GOV_ID")
+	providerGovID := os.Getenv("BOOTSTRAP_PROVIDER_GOV_ID")
+	agentGovID := os.Getenv("BOOTSTRAP_AGENT_GOV_ID")
+	if adminGovID == "" {
+		adminGovID = uuid.NewString()
+	}
+	if customerGovID == "" {
+		customerGovID = uuid.NewString()
+	}
+	if providerGovID == "" {
+		providerGovID = uuid.NewString()
+	}
+	if agentGovID == "" {
+		agentGovID = uuid.NewString()
+	}
+
 	seedUser := func(username, password, govID string, roles ...models.Role) models.User {
 		if err := services.ValidatePasswordComplexity(password); err != nil {
-			panic(err)
+			log.Fatalf("bootstrap: password for %s fails complexity: %v", username, err)
 		}
 		hash, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-		encGovID, _ := services.EncryptAES256([]byte(cfg.EncryptionKey), govID)
-		u := models.User{ID: uuid.NewString(), Username: username, Email: username + "@fleetlease.local", PasswordHash: string(hash), Roles: roles, GovernmentIDEnc: services.MaskSensitive(encGovID)}
+		encGovID, err := services.EncryptAES256([]byte(cfg.EncryptionKey), govID)
+		if err != nil {
+			log.Fatalf("bootstrap: failed to encrypt govID for %s: %v", username, err)
+		}
+		u := models.User{
+			ID: uuid.NewString(), Username: username, Email: username + "@fleetlease.local",
+			PasswordHash: string(hash), Roles: roles, GovernmentIDEnc: encGovID,
+		}
 		st.SaveUser(u)
 		return u
 	}
 
-	seedUser("admin", "Admin1234!Pass", "A-ADMIN-7788", models.RoleAdmin)
-	seedUser("customer", "Customer1234!", "A-CUST-1122", models.RoleCustomer)
-	provider := seedUser("provider", "Provider1234!", "A-PROV-9900", models.RoleProvider)
-	seedUser("agent", "Agent1234!Pass", "A-CSA-5566", models.RoleCSA)
+	seedUser("admin", adminPass, adminGovID, models.RoleAdmin)
+	seedUser("customer", customerPass, customerGovID, models.RoleCustomer)
+	provider := seedUser("provider", providerPass, providerGovID, models.RoleProvider)
+	seedUser("agent", agentPass, agentGovID, models.RoleCSA)
 
 	cat1 := models.Category{ID: uuid.NewString(), Name: "Cars"}
 	cat2 := models.Category{ID: uuid.NewString(), Name: "Vans"}

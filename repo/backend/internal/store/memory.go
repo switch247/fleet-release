@@ -29,7 +29,9 @@ type MemoryStore struct {
 	BackupJobs       map[string]models.BackupJob
 	ResetEvidence    map[string]models.PasswordResetEvidence
 	CouponsUsed      map[string]string
+	CouponCatalog    map[string]float64
 	RetentionReports map[string]models.RetentionReport
+	ReconcileKeys    map[string]struct{}
 }
 
 func NewMemoryStore() *MemoryStore {
@@ -54,7 +56,23 @@ func NewMemoryStore() *MemoryStore {
 		BackupJobs:       map[string]models.BackupJob{},
 		ResetEvidence:    map[string]models.PasswordResetEvidence{},
 		CouponsUsed:      map[string]string{},
+		CouponCatalog: map[string]float64{
+			"DEMO10": 0.10,
+			"SAVE20": 0.20,
+		},
 		RetentionReports: map[string]models.RetentionReport{},
+		ReconcileKeys:    map[string]struct{}{},
 	}
+}
+
+func (s *MemoryStore) MarkReconcileApplied(userID, key string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	composite := userID + ":" + key
+	if _, exists := s.ReconcileKeys[composite]; exists {
+		return true
+	}
+	s.ReconcileKeys[composite] = struct{}{}
+	return false
 }
 

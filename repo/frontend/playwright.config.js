@@ -10,8 +10,31 @@ module.exports = defineConfig({
       'Content-Type': 'application/json',
     },
     trace: 'on-first-retry',
+    launchOptions: {
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    },
   },
   expect: {
     toHaveScreenshot: { threshold: 0.2 },
   },
+  projects: [
+    {
+      name: 'api',
+      testMatch: /.*\.spec\.js/,
+      testIgnore: /.*\.ui\.spec\.js/,
+      use: {
+        baseURL: process.env.API_BASE_URL || 'https://127.0.0.1:8080',
+        ignoreHTTPSErrors: true,
+        extraHTTPHeaders: { 'Content-Type': 'application/json' },
+      },
+    },
+    {
+      name: 'ui',
+      testMatch: /.*\.ui\.spec\.js/,
+      use: {
+        baseURL: process.env.FRONTEND_BASE_URL || 'http://127.0.0.1:5173',
+        ignoreHTTPSErrors: true,
+      },
+    },
+  ],
 });

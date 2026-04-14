@@ -13,21 +13,23 @@ type PricingConfig struct {
 }
 
 type EstimateInput struct {
-	StartAt  time.Time
-	EndAt    time.Time
-	OdoStart float64
-	OdoEnd   float64
-	Deposit  float64
+	StartAt           time.Time
+	EndAt             time.Time
+	OdoStart          float64
+	OdoEnd            float64
+	Deposit           float64
+	CouponDiscountPct float64
 }
 
 type EstimateResult struct {
-	BaseAmount     float64 `json:"baseAmount"`
-	MileageAmount  float64 `json:"mileageAmount"`
-	TimeAmount     float64 `json:"timeAmount"`
-	NightSurcharge float64 `json:"nightSurcharge"`
-	Total          float64 `json:"total"`
-	Deposit        float64 `json:"deposit"`
-	IncludedMiles  float64 `json:"includedMiles"`
+	BaseAmount           float64 `json:"baseAmount"`
+	MileageAmount        float64 `json:"mileageAmount"`
+	TimeAmount           float64 `json:"timeAmount"`
+	NightSurcharge       float64 `json:"nightSurcharge"`
+	CouponDiscountAmount float64 `json:"couponDiscountAmount,omitempty"`
+	Total                float64 `json:"total"`
+	Deposit              float64 `json:"deposit"`
+	IncludedMiles        float64 `json:"includedMiles"`
 }
 
 func DefaultPricingConfig() PricingConfig {
@@ -74,14 +76,21 @@ func EstimateFare(cfg PricingConfig, in EstimateInput) EstimateResult {
 		deposit = cfg.DepositDefault
 	}
 
+	discount := 0.0
+	if in.CouponDiscountPct > 0 {
+		discount = round2(total * in.CouponDiscountPct)
+		total = round2(total - discount)
+	}
+
 	return EstimateResult{
-		BaseAmount:     round2(base),
-		MileageAmount:  round2(mileage),
-		TimeAmount:     round2(timeAmount),
-		NightSurcharge: round2(night),
-		Total:          round2(total),
-		Deposit:        round2(deposit),
-		IncludedMiles:  cfg.IncludedMiles,
+		BaseAmount:           round2(base),
+		MileageAmount:        round2(mileage),
+		TimeAmount:           round2(timeAmount),
+		NightSurcharge:       round2(night),
+		CouponDiscountAmount: discount,
+		Total:                total,
+		Deposit:              round2(deposit),
+		IncludedMiles:        cfg.IncludedMiles,
 	}
 }
 
