@@ -8,7 +8,7 @@ Offline-first FleetLease suite with React frontend and Go (Echo) backend for boo
 - `backend/`: API, auth, pricing, inspection hash chain, settlement ledger, admin operations, and retention jobs.
 - `backend/tests/`: API, integration, security, and unit tests.
 - `backend/migrations/`: PostgreSQL schema migration.
-- `docs/`: Operator and security documentation.
+- `../docs/`: Operator and security documentation (workspace root).
 
 ## Service Ports
 | Service | Port | Description |
@@ -72,10 +72,10 @@ See `docs/Testing_Modes.md` for a full explanation of each layer.
 - Scripts use `DATABASE_URL` when set; otherwise use `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_NAME`, and `DB_PASSWORD`.
 - Backup retention is controlled by `BACKUP_RETENTION_DAYS` (defaults to 30 only when unset).
 
-## Documentation (locations reference the root directory)
-- Deployment hardening: `docs/Deployment_Hardening.md`
-- Security checklist: `docs/Security_Checklist.md`
-- Testing modes: `docs/Testing_Modes.md`
-- Role matrix: `docs/Role_Matrix.md`
-- Security policy: `docs/Security_Policy.md`
-- Operator runbook: `docs/Operator_Runbook.md`
+## Documentation (locations reference the workspace root, one level above this repo directory)
+- Deployment hardening: `../docs/Deployment_Hardening.md`
+- Security checklist: `../docs/Security_Checklist.md`
+- Testing modes: `../docs/Testing_Modes.md`
+- Role matrix: `../docs/Role_Matrix.md`
+- Security policy: `../docs/Security_Policy.md`
+- Operator runbook: `../docs/Operator_Runbook.md`

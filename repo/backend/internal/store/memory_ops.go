@@ -477,6 +477,13 @@ func (s *MemoryStore) MarkCouponUsed(code, bookingID string) bool {
 	return true
 }
 
+func (s *MemoryStore) GetCouponDiscount(code string) (float64, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	pct, ok := s.CouponCatalog[code]
+	return pct, ok
+}
+
 func consultationThreadID(bookingID, topic string) string {
 	return bookingID + "::" + topic
 }

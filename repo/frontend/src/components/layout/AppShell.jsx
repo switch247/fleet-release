@@ -10,7 +10,7 @@ function RoleNav({ roles }) {
     { to: '/overview', label: 'Overview', icon: BarChart3, show: true },
     { to: '/catalog', label: 'Catalog', icon: BarChart3, show: roles.includes('customer') },
     { to: '/bookings', label: 'Bookings', icon: CalendarClock, show: roles.includes('customer') || roles.includes('provider') || roles.includes('admin') },
-    { to: '/inspections', label: 'Inspections', icon: ClipboardCheck, show: roles.includes('provider') || roles.includes('csa') || roles.includes('admin') },
+    { to: '/inspections', label: 'Inspections', icon: ClipboardCheck, show: roles.includes('customer') || roles.includes('provider') || roles.includes('csa') || roles.includes('admin') },
     { to: '/complaints', label: 'Complaints', icon: MessageSquare, show: roles.includes('customer') || roles.includes('provider') || roles.includes('csa') || roles.includes('admin') },
     { to: '/consultations', label: 'Consultations', icon: FileText, show: roles.includes('customer') || roles.includes('provider') || roles.includes('csa') || roles.includes('admin') },
     { to: '/ratings', label: 'Ratings', icon: Star, show: roles.includes('customer') || roles.includes('provider') || roles.includes('admin') },

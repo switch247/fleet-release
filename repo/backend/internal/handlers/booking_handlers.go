@@ -42,6 +42,9 @@ func (h *Handler) CreateBooking(c echo.Context) error {
 	if !ok {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "listing not found"})
 	}
+	if !listing.Available {
+		return c.JSON(http.StatusConflict, map[string]string{"error": "listing is not available for booking"})
+	}
 	startAt, err := time.Parse(time.RFC3339, req.StartAt)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid startAt timestamp"})
@@ -55,9 +58,15 @@ func (h *Handler) CreateBooking(c echo.Context) error {
 	}
 	pricingCfg := h.Pricing
 	pricingCfg.IncludedMiles = listing.IncludedMiles
-	estimate := services.EstimateFare(pricingCfg, services.EstimateInput{StartAt: startAt, EndAt: endAt, OdoStart: req.OdoStart, OdoEnd: req.OdoEnd, Deposit: listing.Deposit})
+	couponPct := 0.0
+	if req.CouponCode != "" {
+		if pct, found := h.Store.GetCouponDiscount(req.CouponCode); found {
+			couponPct = pct
+		}
+	}
+	estimate := services.EstimateFare(pricingCfg, services.EstimateInput{StartAt: startAt, EndAt: endAt, OdoStart: req.OdoStart, OdoEnd: req.OdoEnd, Deposit: listing.Deposit, CouponDiscountPct: couponPct})
 	customerID, _ := c.Get("userID").(string)
-	booking := models.Booking{ID: uuid.NewString(), CustomerID: customerID, ProviderID: listing.ProviderID, ListingID: listing.ID, CouponCode: req.CouponCode, StartAt: startAt, EndAt: endAt, OdoStart: req.OdoStart, OdoEnd: req.OdoEnd, Status: "booked", EstimatedAmount: estimate.Total, DepositAmount: estimate.Deposit}
+	booking := models.Booking{ID: uuid.NewString(), CustomerID: customerID, ProviderID: listing.ProviderID, ListingID: listing.ID, CouponCode: req.CouponCode, CouponDiscountAmount: estimate.CouponDiscountAmount, StartAt: startAt, EndAt: endAt, OdoStart: req.OdoStart, OdoEnd: req.OdoEnd, Status: "booked", EstimatedAmount: estimate.Total, DepositAmount: estimate.Deposit}
 	h.Store.SaveBooking(booking)
 	h.Logger.Info("booking_created", "bookingID", booking.ID, "customerID", booking.CustomerID)
 	return c.JSON(http.StatusCreated, map[string]interface{}{"booking": booking, "estimate": estimate})
@@ -65,11 +74,12 @@ func (h *Handler) CreateBooking(c echo.Context) error {
 
 func (h *Handler) EstimateBooking(c echo.Context) error {
 	var req struct {
-		ListingID string  `json:"listingId"`
-		StartAt   string  `json:"startAt"`
-		EndAt     string  `json:"endAt"`
-		OdoStart  float64 `json:"odoStart"`
-		OdoEnd    float64 `json:"odoEnd"`
+		ListingID  string  `json:"listingId"`
+		CouponCode string  `json:"couponCode"`
+		StartAt    string  `json:"startAt"`
+		EndAt      string  `json:"endAt"`
+		OdoStart   float64 `json:"odoStart"`
+		OdoEnd     float64 `json:"odoEnd"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid payload"})
@@ -89,14 +99,21 @@ func (h *Handler) EstimateBooking(c echo.Context) error {
 	if !endAt.After(startAt) {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "endAt must be after startAt"})
 	}
+	couponPct := 0.0
+	if req.CouponCode != "" {
+		if pct, found := h.Store.GetCouponDiscount(req.CouponCode); found {
+			couponPct = pct
+		}
+	}
 	pricingCfg := h.Pricing
 	pricingCfg.IncludedMiles = listing.IncludedMiles
 	estimate := services.EstimateFare(pricingCfg, services.EstimateInput{
-		StartAt:  startAt,
-		EndAt:    endAt,
-		OdoStart: req.OdoStart,
-		OdoEnd:   req.OdoEnd,
-		Deposit:  listing.Deposit,
+		StartAt:           startAt,
+		EndAt:             endAt,
+		OdoStart:          req.OdoStart,
+		OdoEnd:            req.OdoEnd,
+		Deposit:           listing.Deposit,
+		CouponDiscountPct: couponPct,
 	})
 	customerID, _ := c.Get("userID").(string)
 	h.Logger.Info("booking_estimate", "listingId", listing.ID, "customerId", customerID, "total", estimate.Total, "deposit", estimate.Deposit)
@@ -159,6 +176,20 @@ func (h *Handler) CloseSettlement(c echo.Context) error {
 	h.Store.AppendLedger(bookingID, charge)
 	refundPrev := charge.Hash
 
+	// Apply coupon discount ledger entry if a discount was recorded at booking time.
+	if booking.CouponDiscountAmount > 0 {
+		couponTs := now.Add(time.Millisecond)
+		couponHash := services.ChainHash(refundPrev, "coupon_discount|"+formatAmount(booking.CouponDiscountAmount)+"|Coupon code discount: "+booking.CouponCode, couponTs)
+		couponEntry := models.LedgerEntry{
+			ID: uuid.NewString(), BookingID: bookingID, Type: "coupon_discount",
+			Amount:      booking.CouponDiscountAmount,
+			Description: "Coupon code discount: " + booking.CouponCode,
+			CreatedAt:   couponTs, PrevHash: refundPrev, Hash: couponHash,
+		}
+		h.Store.AppendLedger(bookingID, couponEntry)
+		refundPrev = couponEntry.Hash
+	}
+
 	// Sum wear-and-tear deduction amounts recorded across all inspection revisions.
 	var totalDeductions float64
 	for _, rev := range h.Store.ListInspections(bookingID) {
@@ -166,7 +197,7 @@ func (h *Handler) CloseSettlement(c echo.Context) error {
 			totalDeductions += item.DamageDeductionAmount
 		}
 	}
-	nextTs := now.Add(time.Millisecond)
+	nextTs := now.Add(2 * time.Millisecond)
 	if totalDeductions > 0 {
 		wearHash := services.ChainHash(refundPrev, "wear_deduction|"+formatAmount(totalDeductions)+"|Inspection wear-and-tear deduction", nextTs)
 		wearEntry := models.LedgerEntry{

@@ -14,6 +14,11 @@ export function clearQueue() {
   localStorage.removeItem(KEY);
 }
 
+export function removeFromQueue(predicate) {
+  const queue = getQueue();
+  localStorage.setItem(KEY, JSON.stringify(queue.filter((item) => !predicate(item))));
+}
+
 /**
  * Flush the queue by dispatching each item to a per-type handler function.
  * apiCallMap: { booking: fn, inspection: fn, complaint: fn, ... }

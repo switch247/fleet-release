@@ -63,18 +63,19 @@ type Listing struct {
 }
 
 type Booking struct {
-	ID              string    `json:"id"`
-	CustomerID      string    `json:"customerId"`
-	ProviderID      string    `json:"providerId"`
-	ListingID       string    `json:"listingId"`
-	CouponCode      string    `json:"couponCode"`
-	StartAt         time.Time `json:"startAt"`
-	EndAt           time.Time `json:"endAt"`
-	OdoStart        float64   `json:"odoStart"`
-	OdoEnd          float64   `json:"odoEnd"`
-	Status          string    `json:"status"`
-	EstimatedAmount float64   `json:"estimatedAmount"`
-	DepositAmount   float64   `json:"depositAmount"`
+	ID                   string    `json:"id"`
+	CustomerID           string    `json:"customerId"`
+	ProviderID           string    `json:"providerId"`
+	ListingID            string    `json:"listingId"`
+	CouponCode           string    `json:"couponCode"`
+	CouponDiscountAmount float64   `json:"couponDiscountAmount"`
+	StartAt              time.Time `json:"startAt"`
+	EndAt                time.Time `json:"endAt"`
+	OdoStart             float64   `json:"odoStart"`
+	OdoEnd               float64   `json:"odoEnd"`
+	Status               string    `json:"status"`
+	EstimatedAmount      float64   `json:"estimatedAmount"`
+	DepositAmount        float64   `json:"depositAmount"`
 }
 
 type StatsSummary struct {

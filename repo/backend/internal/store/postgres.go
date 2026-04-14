@@ -280,8 +280,8 @@ func (s *PostgresStore) DeleteListing(id string) {
 func (s *PostgresStore) SaveBooking(b models.Booking) {
 	ctx := context.Background()
 	_, _ = s.pool.Exec(ctx, `
-INSERT INTO bookings (id,customer_id,provider_id,listing_id,status,estimated_amount,deposit_amount,start_at,end_at,odo_start,odo_end,coupon_code)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+INSERT INTO bookings (id,customer_id,provider_id,listing_id,status,estimated_amount,deposit_amount,start_at,end_at,odo_start,odo_end,coupon_code,coupon_discount_amount)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
 ON CONFLICT (id) DO UPDATE SET
 status=EXCLUDED.status,
 provider_id=EXCLUDED.provider_id,
@@ -291,16 +291,17 @@ start_at=EXCLUDED.start_at,
 end_at=EXCLUDED.end_at,
 odo_start=EXCLUDED.odo_start,
 odo_end=EXCLUDED.odo_end,
-coupon_code=EXCLUDED.coupon_code`,
-		b.ID, b.CustomerID, nullableUUID(b.ProviderID), b.ListingID, b.Status, b.EstimatedAmount, b.DepositAmount, b.StartAt, b.EndAt, b.OdoStart, b.OdoEnd, b.CouponCode,
+coupon_code=EXCLUDED.coupon_code,
+coupon_discount_amount=EXCLUDED.coupon_discount_amount`,
+		b.ID, b.CustomerID, nullableUUID(b.ProviderID), b.ListingID, b.Status, b.EstimatedAmount, b.DepositAmount, b.StartAt, b.EndAt, b.OdoStart, b.OdoEnd, b.CouponCode, b.CouponDiscountAmount,
 	)
 }
 
 func (s *PostgresStore) GetBooking(id string) (models.Booking, bool) {
 	ctx := context.Background()
 	var b models.Booking
-	err := s.pool.QueryRow(ctx, `SELECT id,customer_id,COALESCE(provider_id::text,''),listing_id,COALESCE(coupon_code,''),start_at,end_at,odo_start,odo_end,status,estimated_amount,deposit_amount FROM bookings WHERE id=$1`, id).
-		Scan(&b.ID, &b.CustomerID, &b.ProviderID, &b.ListingID, &b.CouponCode, &b.StartAt, &b.EndAt, &b.OdoStart, &b.OdoEnd, &b.Status, &b.EstimatedAmount, &b.DepositAmount)
+	err := s.pool.QueryRow(ctx, `SELECT id,customer_id,COALESCE(provider_id::text,''),listing_id,COALESCE(coupon_code,''),coupon_discount_amount,start_at,end_at,odo_start,odo_end,status,estimated_amount,deposit_amount FROM bookings WHERE id=$1`, id).
+		Scan(&b.ID, &b.CustomerID, &b.ProviderID, &b.ListingID, &b.CouponCode, &b.CouponDiscountAmount, &b.StartAt, &b.EndAt, &b.OdoStart, &b.OdoEnd, &b.Status, &b.EstimatedAmount, &b.DepositAmount)
 	if err != nil {
 		return models.Booking{}, false
 	}
@@ -309,7 +310,7 @@ func (s *PostgresStore) GetBooking(id string) (models.Booking, bool) {
 
 func (s *PostgresStore) ListBookings() []models.Booking {
 	ctx := context.Background()
-	rows, err := s.pool.Query(ctx, `SELECT id,customer_id,COALESCE(provider_id::text,''),listing_id,COALESCE(coupon_code,''),start_at,end_at,odo_start,odo_end,status,estimated_amount,deposit_amount FROM bookings ORDER BY start_at DESC`)
+	rows, err := s.pool.Query(ctx, `SELECT id,customer_id,COALESCE(provider_id::text,''),listing_id,COALESCE(coupon_code,''),coupon_discount_amount,start_at,end_at,odo_start,odo_end,status,estimated_amount,deposit_amount FROM bookings ORDER BY start_at DESC`)
 	if err != nil {
 		return nil
 	}
@@ -317,7 +318,7 @@ func (s *PostgresStore) ListBookings() []models.Booking {
 	out := make([]models.Booking, 0)
 	for rows.Next() {
 		var b models.Booking
-		if rows.Scan(&b.ID, &b.CustomerID, &b.ProviderID, &b.ListingID, &b.CouponCode, &b.StartAt, &b.EndAt, &b.OdoStart, &b.OdoEnd, &b.Status, &b.EstimatedAmount, &b.DepositAmount) == nil {
+		if rows.Scan(&b.ID, &b.CustomerID, &b.ProviderID, &b.ListingID, &b.CouponCode, &b.CouponDiscountAmount, &b.StartAt, &b.EndAt, &b.OdoStart, &b.OdoEnd, &b.Status, &b.EstimatedAmount, &b.DepositAmount) == nil {
 			out = append(out, b)
 		}
 	}
@@ -736,6 +737,16 @@ func (s *PostgresStore) MarkCouponUsed(code, bookingID string) bool {
 		return false
 	}
 	return res.RowsAffected() == 1
+}
+
+func (s *PostgresStore) GetCouponDiscount(code string) (float64, bool) {
+	ctx := context.Background()
+	var pct float64
+	err := s.pool.QueryRow(ctx, `SELECT discount_pct FROM coupons WHERE code=$1`, code).Scan(&pct)
+	if err != nil {
+		return 0, false
+	}
+	return pct, true
 }
 
 func (s *PostgresStore) MarkReconcileApplied(userID, key string) bool {

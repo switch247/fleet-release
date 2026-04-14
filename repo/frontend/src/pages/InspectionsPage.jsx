@@ -9,7 +9,7 @@ import {
   submitInspection,
   listInspections,
 } from '../lib/api';
-import { enqueue } from '../offline/queue';
+import { enqueue, getQueue, removeFromQueue } from '../offline/queue';
 import { Card, CardTitle } from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Badge from '../components/ui/Badge';
@@ -52,6 +52,39 @@ export default function InspectionsPage() {
   }, [bookingID]);
 
   const [step, setStep] = useState(1); // 1=setup,2=checklist,3=review
+  const [offlineQueueSize, setOfflineQueueSize] = useState(() => getQueue().filter((i) => i.type === 'inspection').length);
+  const [syncStatus, setSyncStatus] = useState('');
+
+  const syncOfflineInspections = async () => {
+    const queue = getQueue();
+    const inspectionItems = queue.filter((i) => i.type === 'inspection');
+    if (inspectionItems.length === 0) return;
+    let applied = 0;
+    const failed = [];
+    for (const item of inspectionItems) {
+      try {
+        const resolvedItems = await Promise.all(item.payload.items.map(async (pi) => {
+          if (!pi._offlineFile) return pi;
+          const { base64, type, checksum } = pi._offlineFile;
+          const fingerprint = `${item.payload.bookingId}:${pi.name}:${checksum}`;
+          const init = await attachmentInit({ bookingId: item.payload.bookingId, type: type.startsWith('video') ? 'video' : 'photo', sizeBytes: Math.ceil(base64.length * 0.75), checksum, fingerprint });
+          const uploadId = init.uploadId || init.attachment?.id;
+          if (!init.deduplicated) {
+            await attachmentChunk({ uploadId, chunkBase64: base64 });
+            await attachmentComplete({ uploadId });
+          }
+          return { name: pi.name, condition: pi.condition, evidenceIds: [uploadId], damageDeductionAmount: pi.damageDeductionAmount };
+        }));
+        await submitInspection({ bookingId: item.payload.bookingId, stage: item.payload.stage, items: resolvedItems, notes: item.payload.notes });
+        applied++;
+      } catch (e) {
+        failed.push(e.message);
+      }
+    }
+    removeFromQueue((i) => i.type === 'inspection');
+    setOfflineQueueSize(0);
+    setSyncStatus(failed.length > 0 ? `Synced ${applied}, failed: ${failed.join('; ')}` : `Synced ${applied} offline inspection(s).`);
+  };
 
   const conditionDeductions = { good: 0, minor: 20, major: 80 };
 
@@ -59,15 +92,24 @@ export default function InspectionsPage() {
     mutationFn: async () => {
       if (!bookingID) throw new Error('Select a booking first');
 
-      // Offline path: queue the inspection metadata without file uploads.
+      // Offline path: evidence files are mandatory even when queuing for later sync.
       if (!navigator.onLine) {
-        const payloadItems = items.map((item) => ({
-          name: item.name,
-          condition: item.condition,
-          evidenceIds: [],
-          damageDeductionAmount: conditionDeductions[item.condition] || 0,
+        for (const item of items) {
+          if (!item.file) throw new Error(`Evidence file required for ${item.name} (offline mode)`);
+        }
+        const payloadItems = await Promise.all(items.map(async (item) => {
+          const { checksum, bytes } = await fileChecksum(item.file);
+          const fileBase64 = btoa(String.fromCharCode(...new Uint8Array(bytes)));
+          return {
+            name: item.name,
+            condition: item.condition,
+            evidenceIds: [],
+            damageDeductionAmount: conditionDeductions[item.condition] || 0,
+            _offlineFile: { base64: fileBase64, type: item.file.type, name: item.file.name, checksum },
+          };
         }));
         enqueue({ type: 'inspection', path: '/inspections', method: 'POST', payload: { bookingId: bookingID, stage, items: payloadItems, notes } });
+        setOfflineQueueSize(getQueue().filter((i) => i.type === 'inspection').length);
         return;
       }
 
@@ -148,10 +190,19 @@ export default function InspectionsPage() {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h2 className="text-2xl font-semibold">Guided Inspection & Settlement</h2>
-        <p className="text-sm text-slate-400">Camera evidence is mandatory per checklist item before submission.</p>
+      <header className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-semibold">Guided Inspection & Settlement</h2>
+          <p className="text-sm text-slate-400">Camera evidence is mandatory per checklist item before submission.</p>
+        </div>
+        {offlineQueueSize > 0 && (
+          <div className="flex items-center gap-2">
+            <Badge variant="neutral">Offline queue: {offlineQueueSize}</Badge>
+            <Button variant="outline" onClick={syncOfflineInspections}>Sync Offline Inspections</Button>
+          </div>
+        )}
       </header>
+      {syncStatus && <p className="text-sm text-cyan-300">{syncStatus}</p>}
 
       <div className="flex justify-between items-center">
         <div>

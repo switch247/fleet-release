@@ -80,6 +80,7 @@ export default function BookingsPage() {
   const previewEstimate = async () => {
     const payload = {
       listingId: form.listingId,
+      couponCode: form.couponCode || undefined,
       startAt: form.startAt ? new Date(form.startAt).toISOString() : null,
       endAt: form.endAt ? new Date(form.endAt).toISOString() : null,
       odoStart: Number(form.odoStart),
@@ -94,7 +95,7 @@ export default function BookingsPage() {
   useEffect(() => {
     setEstimatePreview(null);
     setEstimateError('');
-  }, [form.listingId, form.startAt, form.endAt, form.odoStart, form.odoEnd]);
+  }, [form.listingId, form.startAt, form.endAt, form.odoStart, form.odoEnd, form.couponCode]);
 
   const columns = useMemo(() => [
     { key: 'id', title: 'Booking ID' },

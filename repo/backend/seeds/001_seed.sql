@@ -71,6 +71,12 @@ INSERT INTO notifications (id, user_id, title, body, fingerprint, status) VALUES
 ('00000000-0000-0000-0000-000000011001', '00000000-0000-0000-0000-00000000a002', 'New booking', 'You have a new booking (active)', 'notif-fp-1', 'queued')
 ON CONFLICT DO NOTHING;
 
+-- Coupon catalog
+INSERT INTO coupons (id, code, discount_pct) VALUES
+('00000000-0000-0000-0000-000000013001', 'DEMO10', 0.10),
+('00000000-0000-0000-0000-000000013002', 'SAVE20', 0.20)
+ON CONFLICT DO NOTHING;
+
 -- Coupon redemption for cancelled booking
 INSERT INTO coupon_redemptions (id, code, booking_id, status, fingerprint) VALUES
 ('00000000-0000-0000-0000-000000012001', 'DEMO10', '00000000-0000-0000-0000-000000000303', 'used', 'cp-fp-1')

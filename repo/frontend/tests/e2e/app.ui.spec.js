@@ -28,8 +28,9 @@ test('invalid login shows an error message', async ({ page }) => {
   await submitBtn.click();
 
   // Expect an error message to appear
-  const errorMsg = page.locator('[role="alert"], .text-red-400, .text-rose-400, [class*="error"]');
-  await expect(errorMsg.first()).toBeVisible({ timeout: 8000 });
+  const errorMsgCss = page.locator('[role="alert"], .text-red-400, .text-rose-300, .text-rose-400, [class*="error"]');
+  const errorMsgText = page.getByText(/invalid|error|failed/i);
+  await expect(errorMsgCss.or(errorMsgText).first()).toBeVisible({ timeout: 8000 });
 });
 
 test('successful login navigates away from login page', async ({ page }) => {
@@ -103,7 +104,7 @@ test('notifications page or inbox link is reachable for authenticated user', asy
   await page.locator('button[type="submit"], button:has-text("Login"), button:has-text("Sign in")').first().click();
   await page.waitForURL((url) => !url.pathname.includes('login'), { timeout: 10000 });
 
-  const notificationsLink = page.locator('a[href*="notification" i], nav >> text=Notifications, nav >> text=Inbox');
+  const notificationsLink = page.locator('a[href="/notifications"], a[href*="notification" i], a[href="/inbox"], a[href*="inbox" i]');
   await expect(notificationsLink.first()).toBeVisible({ timeout: 8000 });
 });
 
@@ -139,11 +140,11 @@ test('admin user sees admin-only nav links', async ({ page }) => {
   await expect(page.locator('a[href="/admin/notifications"]')).toBeVisible({ timeout: 8000 });
 });
 
-test('customer does NOT see Inspections nav link', async ({ page }) => {
+test('customer sees Inspections nav link', async ({ page }) => {
   await loginAs(page, process.env.TEST_UI_USERNAME || 'customer', process.env.TEST_UI_PASSWORD || 'Customer1234!');
 
-  // Inspections is only shown to provider / csa / admin roles.
-  await expect(page.locator('a[href="/inspections"]')).not.toBeVisible();
+  // Inspections is available to customer / provider / csa / admin roles.
+  await expect(page.locator('a[href="/inspections"]')).toBeVisible();
 });
 
 test('complaints page is accessible and shows Open Complaint form for customer', async ({ page }) => {

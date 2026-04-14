@@ -34,6 +34,12 @@ export default function EstimateSummary({ estimate }) {
           <span className={labelClasses}>Night surcharge</span>
           <span className="text-slate-300">{format(estimate.nightSurcharge)}</span>
         </div>
+        {estimate.couponDiscountAmount > 0 && (
+          <div className="flex justify-between text-emerald-400">
+            <span className={labelClasses + ' text-emerald-400'}>Coupon discount</span>
+            <span>-{format(estimate.couponDiscountAmount)}</span>
+          </div>
+        )}
         <div className="flex justify-between">
           <span className={labelClasses}>Deposit</span>
           <span className="text-slate-300">{format(estimate.deposit)}</span>

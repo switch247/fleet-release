@@ -4,7 +4,7 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   server: {
-    https: true,
+    https: process.env.VITE_DEV_HTTPS === 'true',
   },
   test: {
     environment: 'jsdom',
