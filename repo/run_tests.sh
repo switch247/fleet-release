@@ -2,6 +2,7 @@
 set -e
 
 # Start all services in the background.
+docker compose down --volumes --remove-orphans
 docker compose up -d --build
 
 # Wait for the database to accept connections.
