@@ -9,7 +9,7 @@ if (typeof globalThis.crypto === 'undefined' || typeof globalThis.crypto.randomU
   globalThis.crypto = { randomUUID: () => `test-uuid-${++counter}` };
 }
 
-import { getQueue, enqueue, clearQueue, flushQueue, reconcileQueue } from '../../src/offline/queue';
+import { getQueue, enqueue, clearQueue, flushQueue, reconcileQueue, removeFromQueue } from '../../src/offline/queue';
 
 beforeEach(() => {
   clearQueue();
@@ -104,6 +104,25 @@ test('reconcileQueue POSTs operations to /sync/reconcile and clears queue on suc
 
   expect(result).toEqual(serverResponse);
   expect(getQueue()).toEqual([]);
+});
+
+// ── removeFromQueue ──────────────────────────────────────────────────────────
+
+test('removeFromQueue removes items matching predicate', () => {
+  enqueue({ type: 'booking', payload: { id: 1 } });
+  enqueue({ type: 'complaint', payload: { id: 2 } });
+  enqueue({ type: 'booking', payload: { id: 3 } });
+  removeFromQueue((item) => item.type === 'booking');
+  const queue = getQueue();
+  expect(queue).toHaveLength(1);
+  expect(queue[0].type).toBe('complaint');
+});
+
+test('removeFromQueue leaves items not matching predicate', () => {
+  enqueue({ type: 'inspection', payload: {} });
+  enqueue({ type: 'inspection', payload: {} });
+  removeFromQueue((item) => item.type === 'booking');
+  expect(getQueue()).toHaveLength(2);
 });
 
 test('reconcileQueue falls back to flushQueue when apiFetch throws', async () => {
