@@ -69,7 +69,8 @@ func (h *Handler) CreateBooking(c echo.Context) error {
 	booking := models.Booking{ID: uuid.NewString(), CustomerID: customerID, ProviderID: listing.ProviderID, ListingID: listing.ID, CouponCode: req.CouponCode, CouponDiscountAmount: estimate.CouponDiscountAmount, StartAt: startAt, EndAt: endAt, OdoStart: req.OdoStart, OdoEnd: req.OdoEnd, Status: "booked", EstimatedAmount: estimate.Total, DepositAmount: estimate.Deposit}
 	h.Store.SaveBooking(booking)
 	h.Logger.Info("booking_created", "bookingID", booking.ID, "customerID", booking.CustomerID)
-	return c.JSON(http.StatusCreated, map[string]interface{}{"booking": booking, "estimate": estimate})
+	// Return only the booking object in the top-level 'booking' field, as expected by test helpers.
+	return c.JSON(http.StatusCreated, map[string]interface{}{"booking": booking})
 }
 
 func (h *Handler) EstimateBooking(c echo.Context) error {
