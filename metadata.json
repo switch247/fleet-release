@@ -1,5 +1,5 @@
 {
-  "project_type": "fullstack-web-application",
+  "project_type": "fullstack",
   "backend_framework": "echo",
   "frontend_framework": "react (vite)",
   "backend_language": "go",
