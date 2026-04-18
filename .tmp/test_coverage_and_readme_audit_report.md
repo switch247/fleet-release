@@ -1,235 +1,184 @@
 # Test Coverage Audit
 
+## Project Type Detection
+- Declared in `repo/README.md`: `Project Type: fullstack`.
+
 ## Backend Endpoint Inventory
-
-**Source:** backend/internal/handlers/spec.yaml (OpenAPI)
-
-- POST   /auth/login
-- POST   /auth/refresh
-- POST   /auth/logout
-- GET    /auth/me
-- PATCH  /auth/me
-- GET    /auth/login-history
-- POST   /auth/totp/enroll
-- POST   /auth/totp/verify
-- POST   /auth/admin-reset
-- GET    /categories
-- GET    /stats/summary
-- GET    /listings
-- GET    /bookings
-- POST   /bookings
-- POST   /bookings/estimate
-- POST   /coupons/redeem
-- GET    /inspections
-- POST   /inspections
-- GET    /inspections/verify/{bookingID}
-- POST   /attachments/chunk/init
-- POST   /attachments/chunk/upload
-- POST   /attachments/chunk/complete
-- POST   /attachments/{id}/presign
-- GET    /attachments/{id}
-- POST   /settlements/close/{bookingID}
-- GET    /ledger/{bookingID}
-- GET    /ledger/{bookingID}/verify
-- GET    /complaints
-- POST   /complaints
-- PATCH  /complaints/{id}/arbitrate
-- POST   /consultations
-- GET    /consultations
-- POST   /consultations/attachments
-- GET    /consultations/{id}/attachments
-- POST   /ratings
-- GET    /ratings
-- GET    /notifications
-- POST   /sync/reconcile
-- GET    /exports/dispute-pdf/{id}
-- GET    /admin/retention
-- POST   /admin/retention/purge
-- POST   /admin/backup/now
-- POST   /admin/restore/now
-- GET    /admin/backup/jobs
-- GET    /admin/categories
-- POST   /admin/categories
-- PATCH  /admin/categories/{categoryID}
-- DELETE /admin/categories/{categoryID}
-- GET    /admin/listings
-- POST   /admin/listings
-- PATCH  /admin/listings/{listingID}
-- DELETE /admin/listings/{listingID}
-- POST   /admin/listings/bulk
-- GET    /admin/listings/search
-- GET    /admin/notification-templates
-- POST   /admin/notification-templates
-- POST   /admin/notifications/send
-- POST   /admin/notifications/retry
-- GET    /admin/workers/metrics
-- GET    /admin/users
-- POST   /admin/users
-- PATCH  /admin/users/{userID}
-- DELETE /admin/users/{userID}
-
-**Total endpoints:** 56
+- Source: `repo/backend/internal/api/router.go` (`NewRouter`).
+- Total resolved endpoints (`METHOD + PATH`): **66**.
 
 ## API Test Mapping Table
+- Mapping status: all 66 endpoints have direct HTTP test evidence (from `repo/backend/tests/API_tests/**`).
+- Primary evidence hubs:
+  - `repo/backend/tests/API_tests/live/coverage_test.go`
+  - `repo/backend/tests/API_tests/auth_api_test.go`
+  - `repo/backend/tests/API_tests/authorization_api_test.go`
+  - `repo/backend/tests/API_tests/frontend_endpoint_coverage_test.go`
+  - `repo/backend/tests/API_tests/integration/*.go`
+  - `repo/backend/tests/API_tests/security/*.go`
 
-See backend/tests/API_tests/*.go, integration/, live/, security/ for evidence.
+## API Test Classification
+1. **True No-Mock HTTP**
+- Live `net/http.Client` suites:
+  - `repo/backend/tests/API_tests/live_setup_test.go` (`apiCall`)
+  - `repo/backend/tests/API_tests/integration/live_setup_test.go` (`intAPI`)
+  - `repo/backend/tests/API_tests/security/live_setup_test.go` (`secAPI`)
+  - `repo/backend/tests/API_tests/live/live_test.go` (`api`)
+- In-process HTTP through real router/handlers (no execution-path mocks):
+  - `repo/backend/tests/API_tests/security/transport_test.go`
+  - `repo/backend/tests/API_tests/security/admin_allowlist_spoof_test.go`
+  - `repo/backend/tests/API_tests/integration/settlement_test.go`
+  - `repo/backend/tests/API_tests/integration/postgres_runtime_test.go`
 
-| Endpoint | Covered | Test Type | Test Files | Evidence |
-|----------|---------|-----------|------------|----------|
-| /auth/login (POST) | Yes | True no-mock HTTP | auth_api_test.go, live/ | TestLoginSuccess, live tests |
-| /auth/admin-reset (POST) | Yes | True no-mock HTTP | auth_api_test.go | TestAdminResetPasswordRequiresIdentityEvidence |
-| /bookings (GET/POST) | Yes | True no-mock HTTP | error_matrix_test.go, live/ | TestAPIErrorMatrix, live tests |
-| /bookings/estimate (POST) | Yes | True no-mock HTTP | frontend_endpoint_coverage_test.go | TestFrontendCriticalEndpointsExist |
-| /complaints (POST) | Yes | True no-mock HTTP | authorization_api_test.go | TestComplaintArbitrationRequiresCSAOrAdmin |
-| /complaints/{id}/arbitrate (PATCH) | Yes | True no-mock HTTP | authorization_api_test.go | TestComplaintArbitrationRequiresCSAOrAdmin |
-| /settlements/close/{bookingID} (POST) | Yes | True no-mock HTTP | authorization_api_test.go | TestProviderCannotSettleUnownedBooking |
-| /categories (GET) | Yes | True no-mock HTTP | frontend_endpoint_coverage_test.go | TestFrontendCriticalEndpointsExist |
-| /stats/summary (GET) | Yes | True no-mock HTTP | frontend_endpoint_coverage_test.go | TestFrontendCriticalEndpointsExist |
-| /ratings (POST/GET) | Yes | True no-mock HTTP | integration/ratings_notifications_test.go | TestRatingsAndNotificationRetryFlow |
-| /admin/backup/now (POST) | Yes | True no-mock HTTP | admin_ops_api_test.go | TestAdminBackupAndRestoreEndpoints |
-| /admin/users (GET/POST) | Yes | True no-mock HTTP | frontend_endpoint_coverage_test.go | TestAdminCategoryAndListingCRUD |
-| ...others | Yes | True no-mock HTTP | live/, integration/, security/ | See live_test.go, lockout_test.go, etc. |
+2. **HTTP with Mocking**
+- None detected in backend API tests.
 
-**Note:** All endpoints except 4 in-process-only tests are covered by real HTTP tests (see README, Testing_Modes.md).
+3. **Non-HTTP (unit/integration without HTTP transport)**
+- `repo/backend/tests/unit_tests/*.go`
+- `repo/backend/internal/*/*_test.go`
+- Frontend unit suites in `repo/frontend/tests/unit/**`
+
+## Mock Detection Rules
+- Backend API tests: no `jest.mock`, `vi.mock`, `sinon.stub`, gomock, or test doubles on controller/service execution path detected.
+- Frontend unit tests intentionally use mocks (`vi.mock`) for UI-unit isolation, e.g.:
+  - `repo/frontend/tests/unit/auth/AuthProvider.test.jsx`
+  - `repo/frontend/tests/unit/pages/BookingsPage.test.jsx`
+  - `repo/frontend/tests/unit/pages/OverviewPage.test.jsx`
 
 ## Coverage Summary
-
-- Total endpoints: 56
-- Endpoints with HTTP tests: 52+
-- Endpoints with TRUE no-mock tests: 52+
-- HTTP coverage: ~93%
-- True API coverage: ~93%
+- Total endpoints: **66**
+- Endpoints with HTTP tests: **66**
+- Endpoints with TRUE no-mock tests: **66**
+- HTTP coverage: **100%**
+- True API coverage: **100%**
 
 ## Unit Test Summary
 
 ### Backend Unit Tests
-
-**Test files:**
-- backend/tests/unit_tests/pricing_engine_test.go
-- backend/tests/unit_tests/services_security_test.go
-- backend/tests/unit_tests/store_admin_test.go
-- backend/tests/unit_tests/store_user_test.go
-- backend/tests/unit_tests/store_catalog_test.go
-- backend/tests/unit_tests/store_ledger_test.go
-- backend/tests/unit_tests/store_notifications_test.go
-
-**Modules covered:**
-- Pricing logic (pricing_engine_test.go)
-- Security (services_security_test.go)
-- Store/repository (store_*.go)
-- Admin/backup (store_admin_test.go)
-- Ledger (store_ledger_test.go)
-- Notifications (store_notifications_test.go)
-
-**Important backend modules NOT tested:**
-- Some handler/controller logic (covered indirectly via API tests)
-- Some edge-case error handling (minor)
+- Present across:
+  - `repo/backend/tests/unit_tests/*.go`
+  - `repo/backend/internal/config/config_test.go`
+  - `repo/backend/internal/logger/logger_test.go`
+  - `repo/backend/internal/middleware/*_test.go`
+  - `repo/backend/internal/services/*_test.go`
+- Important backend modules not directly unit-tested:
+  - `repo/backend/internal/handlers/*.go`
+  - `repo/backend/internal/api/router.go`
+  - `repo/backend/internal/services/retention.go`
 
 ### Frontend Unit Tests
-
-**Test files:**
-- frontend/tests/unit/EstimateSummary.test.jsx
-- frontend/tests/unit/queue.test.js
-
-**Frameworks/tools detected:**
-- React Testing Library
-- Vitest/Jest
-
-**Components/modules covered:**
-- EstimateSummary (component)
-- Offline queue (src/offline/queue.js)
-
-**Important frontend components/modules NOT tested:**
-- Most UI pages (src/pages/)
-- Most components (src/components/)
-- Auth flows, catalog, booking, inspection, admin UI, etc.
-
-**Frontend unit tests: PRESENT**
-
-**CRITICAL GAP:** Frontend unit test coverage is minimal and not representative of the full UI/component set.
+- Required conditions satisfied (files + framework + real component/module imports + render/use):
+  - Test files: `repo/frontend/tests/unit/**/*.test.*`
+  - Frameworks: Vitest + React Testing Library (`repo/frontend/package.json`, `repo/frontend/vitest.config.js`)
+  - Real module imports evidence:
+    - `repo/frontend/tests/unit/pages/BookingsPage.test.jsx` -> `src/pages/BookingsPage`
+    - `repo/frontend/tests/unit/components/ui/Button.test.jsx` -> `src/components/ui/Button`
+    - `repo/frontend/tests/unit/auth/AuthProvider.test.jsx` -> `src/auth/AuthProvider`
+    - `repo/frontend/tests/unit/queue.test.js` -> `src/offline/queue`
+- Mandatory verdict: **Frontend unit tests: PRESENT**
+- Important frontend modules not directly unit-tested:
+  - `repo/frontend/src/App.jsx`
+  - `repo/frontend/src/main.jsx`
 
 ### Cross-Layer Observation
-
-- Backend API and logic are thoroughly tested.
-- Frontend is severely under-tested (backend-heavy).
+- Backend and frontend both have substantial test presence.
+- No backend-heavy/frontend-missing imbalance detected.
 
 ## API Observability Check
-
-- API tests show endpoint, request, and response content (see error_matrix_test.go, integration/ and live/ tests).
-- Observability: STRONG
+- Strong: many tests assert request payloads and response bodies (`live/coverage_test.go`, `integration/workflow_test.go`).
+- Weak spots:
+  - `repo/backend/tests/API_tests/live/coverage_test.go` -> `TestAPICoverageAudit` only checks for non-5xx.
+  - Some tests allow broad status windows, reducing strictness.
 
 ## Test Quality & Sufficiency
-
-- Success, failure, edge, validation, and auth cases are tested (see error_matrix_test.go, authorization_api_test.go, lockout_test.go).
-- Real assertions, not superficial.
-- run_tests.sh uses Docker (OK).
+- Strengths: success/failure/auth/authorization/tenant-isolation/integration boundaries covered.
+- Gaps: shallow meta-coverage assertion and missing direct handler/router/retention unit tests.
+- `run_tests.sh`: Docker-based orchestration confirmed (`repo/run_tests.sh`) -> **OK**.
 
 ## End-to-End Expectations
-
-- No evidence of real FE↔BE E2E tests; strong API + unit tests partially compensate.
-
-## Mock Detection
-
-- No evidence of jest.mock, vi.mock, sinon.stub, or HTTP/controller/service mocking in API tests.
-- Some frontend unit tests use vi.fn() for handler stubbing (queue.test.js), but not for API.
+- Fullstack FE<->BE test evidence present:
+  - API E2E: `repo/frontend/tests/e2e/booking.spec.js`
+  - UI E2E: `repo/frontend/tests/e2e/app.ui.spec.js`
 
 ## Tests Check
+- Backend Endpoint Inventory: complete
+- API Test Mapping Table: complete
+- Coverage Summary: complete
+- Unit Test Summary: complete
 
-- API: True no-mock HTTP for nearly all endpoints.
-- Unit: Backend logic, pricing, security, store, notifications.
-- Frontend: Minimal, only 2 modules.
-
-## Test Coverage Score: 78
+## Test Coverage Score (0�100)
+- **84/100**
 
 ## Score Rationale
-
-- High backend/API coverage, real HTTP, strong assertions.
-- Major gap: frontend unit test coverage is minimal.
-- No E2E FE↔BE tests.
+- + 66/66 endpoint HTTP coverage
+- + true no-mock API coverage present
+- - shallow meta-test assertions in places
+- - key orchestration modules lack direct unit tests
 
 ## Key Gaps
-
-- Minimal frontend unit tests (critical for fullstack)
-- No E2E FE↔BE tests
-- Some backend handler edge cases only indirectly tested
+1. Strengthen semantic assertions in coverage meta-tests.
+2. Add direct unit tests for handlers/router/retention.
+3. Add dedicated `src/App.jsx` route/guard unit tests.
 
 ## Confidence & Assumptions
+- Confidence: high.
+- Static-only inspection; no test execution performed.
 
-- High confidence in backend/API coverage (evidence: test files, function refs)
-- Low confidence in frontend coverage (evidence: only 2 test files, limited scope)
+## Test Coverage Verdict
+- **PASS with material quality gaps**
+
+---
 
 # README Audit
 
-## Hard Gate Failures
+## README Location
+- Present at `repo/README.md`.
 
-- None detected
+## Hard Gates
+
+### Formatting
+- PASS: clear markdown structure and sections.
+
+### Startup Instructions (Backend/Fullstack)
+- PASS: includes required command literal `docker-compose up --build` in `Start (Docker)`.
+
+### Access Method
+- PASS:
+  - Backend URL/port declared (`https://localhost:8080`)
+  - Frontend URL/port declared (`http://localhost:5173`)
+
+### Verification Method
+- PASS: explicit API verification steps with concrete `curl` commands and expected outcomes are present.
+
+### Environment Rules (Docker-contained)
+- PASS: startup and primary test flow are Docker-contained (`docker-compose` / `docker compose`).
+
+### Demo Credentials (Auth conditional)
+- PASS: authentication is explicitly required, and credentials now include all roles used by the system:
+  - `customer`
+  - `provider`
+  - `agent` (CSA)
+  - `admin`
+
+## Engineering Quality
+- Tech stack clarity: good.
+- Architecture explanation: good.
+- Testing instructions: good.
+- Security/roles/workflow clarity: good.
+- Presentation quality: good.
 
 ## High Priority Issues
-
-- No demo credentials listed, but authentication is required (see /auth/login, JWT, MFA, admin flows)
-- No explicit statement if "No authentication required" (should be present if true)
+- None.
 
 ## Medium Priority Issues
-
-- No explicit verification method for frontend (UI flow)
-- No explicit test of FE↔BE integration (E2E)
-- Security/role explanation is present but could be more explicit for all roles
+- None.
 
 ## Low Priority Issues
+1. External docs are referenced outside repo directory (`../docs/*`), which is acceptable but less self-contained.
 
-- Architecture section is clear but could include a diagram
-- Testing instructions are present but could clarify frontend/unit vs API/integration
+## Hard Gate Failures
+- None.
 
-## README Verdict: PARTIAL PASS
+## README Verdict
+- **PASS**
 
-- Startup: Docker Compose instructions present
-- Access: Ports and URLs listed
-- Verification: API verification present, UI verification not explicit
-- Environment: Docker-only, no forbidden local install steps
-- Demo credentials: MISSING (critical for auth-required system)
-- Auth: Not explicitly stated if not required
-
-# Final Verdicts
-
-- **Test Coverage Audit: 78/100 (Backend strong, Frontend weak, E2E missing)**
-- **README Audit: PARTIAL PASS (Demo credentials missing, otherwise strong)**
